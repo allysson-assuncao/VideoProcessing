@@ -104,6 +104,7 @@ public class VideoProcessing {
         double fps = 24.0; // avaliar metadados conforme o video
 
         System.out.println("Carregando o vídeo... " + caminhoVideo);
+        long tempoI = System.currentTimeMillis();
         byte[][][] pixels = carregarVideo(caminhoVideo);
 
         System.out.printf("Frames: %d   Resolução: %d x %d \n",
@@ -139,6 +140,12 @@ public class VideoProcessing {
                 e.printStackTrace();
             }
         }
+
+        long tempoF = System.currentTimeMillis();
+
+        long tempoExecucao = tempoF - tempoI;
+
+        System.out.println("Tempo de execução total: " + tempoExecucao);
 
         System.out.println("Processamento paralelo concluído.");
 
