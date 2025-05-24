@@ -24,9 +24,7 @@ public class ImageProcessor extends Thread {
     // Metodo que corrige os borroes de um frame
     private void removerBorroes(byte[][] frame, int indice) {
         // Percorre a imagem e busca regioes com muitos pontos com cores extremas
-        for () {
 
-        }
 
     }
 
