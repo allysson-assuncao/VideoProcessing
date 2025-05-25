@@ -108,7 +108,7 @@ public class VideoProcessing {
 
     public static void main(String[] args) {
 
-        String caminhoVideo = "/home/anybody/Documents/Projects/VideoProcessing/video-3s.mp4";
+        String caminhoVideo = "video-3s.mp4";
         String caminhoGravar = "video-3s-corrigido.mp4";
         double fps = 24.0; // avaliar metadados conforme o video
 
@@ -117,8 +117,7 @@ public class VideoProcessing {
         byte[][][] pixels = carregarVideo(caminhoVideo);
         byte[][][] originalPixels = deepCopy(pixels);
 
-        System.out.printf("Frames: %d   Resolução: %d x %d \n",
-                pixels.length, pixels[0][0].length, pixels[0].length);
+        System.out.printf("Frames: %d Resolução: %d x %d \n", pixels.length, pixels[0][0].length, pixels[0].length);
 
         int numThreads = Runtime.getRuntime().availableProcessors();
         System.out.println(numThreads);
@@ -178,14 +177,19 @@ public class VideoProcessing {
             Mat frame = arrayParaMat(original[f]);
             Mat circles = new Mat();
             Imgproc.HoughCircles(frame, circles, Imgproc.HOUGH_GRADIENT,
-                1, 50, 200, 100, 20, 100);
+                    1, 50, 200, 100, 20, 100);
 
+            int detectados = 0;
             for (int i = 0; i < circles.cols(); i++) {
                 double[] data = circles.get(0, i);
                 if (data == null) continue;
+                detectados++;
                 Point center = new Point(data[0], data[1]);
                 int radius = (int) data[2];
                 substituirRegiao(f, center, radius);
+            }
+            if (detectados > 0) {
+                System.out.println("Frame " + f + ": " + detectados + " círculos detectados.");
             }
         }
 
@@ -194,8 +198,8 @@ public class VideoProcessing {
             int y = (int) centro.y;
 
             List<byte[][]> candidatos = new ArrayList<>();
-            if (f > 0) candidatos.add(original[f-1]);
-            if (f < original.length-1) candidatos.add(original[f+1]);
+            if (f > 0) candidatos.add(original[f - 1]);
+            if (f < original.length - 1) candidatos.add(original[f + 1]);
             if (candidatos.isEmpty()) return;
 
             byte[][] melhor = candidatos.get(0);
@@ -203,9 +207,9 @@ public class VideoProcessing {
             int largura = melhor[0].length;
 
             int xInicio = Math.max(0, x - raio);
-            int xFim = Math.min(largura-1, x + raio);
+            int xFim = Math.min(largura - 1, x + raio);
             int yInicio = Math.max(0, y - raio);
-            int yFim = Math.min(altura-1, y + raio);
+            int yFim = Math.min(altura - 1, y + raio);
 
             for (int yi = yInicio; yi <= yFim; yi++) {
                 for (int xi = xInicio; xi <= xFim; xi++) {
@@ -217,7 +221,7 @@ public class VideoProcessing {
         }
 
         private double distancia(int x1, int y1, int x2, int y2) {
-            return Math.sqrt(Math.pow(x1-x2, 2) + Math.pow(y1-y2, 2));
+            return Math.sqrt(Math.pow(x1 - x2, 2) + Math.pow(y1 - y2, 2));
         }
 
         private void corrigirRuido(int f) {
