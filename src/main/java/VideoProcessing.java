@@ -4,6 +4,7 @@ import java.util.List;
 
 import org.opencv.core.CvType;
 import org.opencv.core.Mat;
+import org.opencv.core.Point;
 import org.opencv.core.Size;
 import org.opencv.imgproc.Imgproc;
 import org.opencv.videoio.VideoCapture;
@@ -107,13 +108,13 @@ public class VideoProcessing {
 
     public static void main(String[] args) {
 
-        String caminhoVideo = "video-3s.mp4";
+        String caminhoVideo = "/home/anybody/Documents/Projects/VideoProcessing/video-3s.mp4";
         String caminhoGravar = "video-3s-corrigido.mp4";
         double fps = 24.0; // avaliar metadados conforme o video
 
         System.out.println("Carregando o vídeo... " + caminhoVideo);
         long tempoI = System.currentTimeMillis();
-        byte[][][] pixels = carregarVideo("/home/anybody/Documents/Projects/VideoProcessing/video-3s.mp4");
+        byte[][][] pixels = carregarVideo(caminhoVideo);
         byte[][][] originalPixels = deepCopy(pixels);
 
         System.out.printf("Frames: %d   Resolução: %d x %d \n",
@@ -148,5 +149,96 @@ public class VideoProcessing {
         System.out.println("Tempo total: " + (System.currentTimeMillis() - tempoI));
         gravarVideo(pixels, caminhoGravar, fps);
         System.out.println("Concluído!");
+    }
+
+    static class ImageProcessor extends Thread {
+        private final int start, end;
+        private final byte[][][] original, processed;
+
+        public ImageProcessor(int start, int end, byte[][][] original, byte[][][] processed) {
+            this.start = start;
+            this.end = end;
+            this.original = original;
+            this.processed = processed;
+        }
+
+        @Override
+        public void run() {
+            for (int f = start; f < end; f++) {
+                processFrame(f);
+            }
+        }
+
+        private void processFrame(int f) {
+            corrigirBorrões(f);
+            corrigirRuido(f);
+        }
+
+        private void corrigirBorrões(int f) {
+            Mat frame = arrayParaMat(original[f]);
+            Mat circles = new Mat();
+            Imgproc.HoughCircles(frame, circles, Imgproc.HOUGH_GRADIENT,
+                1, 50, 200, 100, 20, 100);
+
+            for (int i = 0; i < circles.cols(); i++) {
+                double[] data = circles.get(0, i);
+                if (data == null) continue;
+                Point center = new Point(data[0], data[1]);
+                int radius = (int) data[2];
+                substituirRegiao(f, center, radius);
+            }
+        }
+
+        private void substituirRegiao(int f, Point centro, int raio) {
+            int x = (int) centro.x;
+            int y = (int) centro.y;
+
+            List<byte[][]> candidatos = new ArrayList<>();
+            if (f > 0) candidatos.add(original[f-1]);
+            if (f < original.length-1) candidatos.add(original[f+1]);
+            if (candidatos.isEmpty()) return;
+
+            byte[][] melhor = candidatos.get(0);
+            int altura = melhor.length;
+            int largura = melhor[0].length;
+
+            int xInicio = Math.max(0, x - raio);
+            int xFim = Math.min(largura-1, x + raio);
+            int yInicio = Math.max(0, y - raio);
+            int yFim = Math.min(altura-1, y + raio);
+
+            for (int yi = yInicio; yi <= yFim; yi++) {
+                for (int xi = xInicio; xi <= xFim; xi++) {
+                    if (distancia(xi, yi, x, y) <= raio) {
+                        processed[f][yi][xi] = melhor[yi][xi];
+                    }
+                }
+            }
+        }
+
+        private double distancia(int x1, int y1, int x2, int y2) {
+            return Math.sqrt(Math.pow(x1-x2, 2) + Math.pow(y1-y2, 2));
+        }
+
+        private void corrigirRuido(int f) {
+            Mat frame = arrayParaMat(processed[f]);
+            Mat filtrado = new Mat();
+            Imgproc.medianBlur(frame, filtrado, 3);
+            matParaArray(filtrado, processed[f]);
+        }
+
+        private Mat arrayParaMat(byte[][] frame) {
+            Mat mat = new Mat(frame.length, frame[0].length, CvType.CV_8UC1);
+            for (int y = 0; y < frame.length; y++) {
+                mat.put(y, 0, frame[y]);
+            }
+            return mat;
+        }
+
+        private void matParaArray(Mat mat, byte[][] array) {
+            for (int y = 0; y < mat.rows(); y++) {
+                mat.get(y, 0, array[y]);
+            }
+        }
     }
 }
