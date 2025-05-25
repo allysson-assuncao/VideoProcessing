@@ -1,4 +1,5 @@
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 import org.opencv.core.CvType;
@@ -63,17 +64,13 @@ public class VideoProcessing {
         return cuboPixels;
     }
 
-    public static void gravarVideo(byte[][][] pixels,
-                                   String caminho,
-                                   double fps) {
-
+    public static void gravarVideo(byte[][][] pixels, String caminho, double fps) {
         int qFrames = pixels.length;
         int altura = pixels[0].length;
         int largura = pixels[0][0].length;
 
         int fourcc = VideoWriter.fourcc('a', 'v', 'c', '1'); // identificação codec .mp4
-        VideoWriter escritor = new VideoWriter(
-                caminho, fourcc, fps, new Size(largura, altura), true);
+        VideoWriter escritor = new VideoWriter(caminho, fourcc, fps, new Size(largura, altura), true);
 
         if (!escritor.isOpened()) {
             System.err.println("Erro ao gravar vídeo no caminho sugerido");
@@ -97,6 +94,17 @@ public class VideoProcessing {
         escritor.release(); // limpando o buffer
     }
 
+    private static byte[][][] deepCopy(byte[][][] original) {
+        byte[][][] copy = new byte[original.length][][];
+        for (int f = 0; f < original.length; f++) {
+            copy[f] = new byte[original[f].length][];
+            for (int y = 0; y < original[f].length; y++) {
+                copy[f][y] = Arrays.copyOf(original[f][y], original[f][y].length);
+            }
+        }
+        return copy;
+    }
+
     public static void main(String[] args) {
 
         String caminhoVideo = "video-3s.mp4";
@@ -105,52 +113,40 @@ public class VideoProcessing {
 
         System.out.println("Carregando o vídeo... " + caminhoVideo);
         long tempoI = System.currentTimeMillis();
-        byte[][][] pixels = carregarVideo(caminhoVideo);
+        byte[][][] pixels = carregarVideo("/home/anybody/Documents/Projects/VideoProcessing/video-3s.mp4");
+        byte[][][] originalPixels = deepCopy(pixels);
 
         System.out.printf("Frames: %d   Resolução: %d x %d \n",
                 pixels.length, pixels[0][0].length, pixels[0].length);
 
-        /*System.out.println("processamento remove ruído 1");
-        //removerSalPimenta(pixels); //voce deve implementar esta funcao
-
-        System.out.println("processamento remove ruído 2");
-        //removerBorroesTempo(pixels); //voce deve implementar esta funcao*/
-
         int numThreads = Runtime.getRuntime().availableProcessors();
         System.out.println(numThreads);
         int totalFrames = pixels.length;
-        int framesPorThread = (int) Math.ceil((double) totalFrames / numThreads);
-
         List<ImageProcessor> threads = new ArrayList<>();
 
+        int framesPorThread = totalFrames / numThreads;
+        int restante = totalFrames % numThreads;
+        int start = 0;
+
         for (int t = 0; t < numThreads; t++) {
-            int start = t * framesPorThread;
-            int end = Math.min(start + framesPorThread, totalFrames);
-            if (start >= end) break; // Evita threads vazias
-            ImageProcessor processor = new ImageProcessor(pixels, start, end);
-            threads.add(processor);
-            processor.start();
+            int end = start + framesPorThread + (t < restante ? 1 : 0);
+            restante--;
+            threads.add(new ImageProcessor(start, end, originalPixels, pixels));
+            start = end;
         }
 
         // Aguarda todas as threads terminarem
-        for (ImageProcessor processor : threads) {
+        threads.forEach(Thread::start);
+        threads.forEach(t -> {
             try {
-                processor.join();
+                t.join();
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }
-        }
+        });
 
-        long tempoF = System.currentTimeMillis();
-
-        long tempoExecucao = tempoF - tempoI;
-
-        System.out.println("Tempo de execução total: " + tempoExecucao);
-
-        System.out.println("Processamento paralelo concluído.");
-
-        System.out.println("Salvando...  " + caminhoGravar);
+        System.out.println("Tempo total: " + (System.currentTimeMillis() - tempoI));
         gravarVideo(pixels, caminhoGravar, fps);
-        System.out.println("Término do processamento");
+        System.out.println("Concluído!");
     }
 }
