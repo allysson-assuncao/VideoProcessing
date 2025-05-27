@@ -177,7 +177,7 @@ public class VideoProcessing {
             Mat frame = arrayParaMat(original[f]);
             Mat circles = new Mat();
             Imgproc.HoughCircles(frame, circles, Imgproc.HOUGH_GRADIENT,
-                    1, 50, 200, 100, 20, 100);
+                    1, 5, 50, 25, 5, 100);
 
             int detectados = 0;
             for (int i = 0; i < circles.cols(); i++) {
@@ -189,7 +189,9 @@ public class VideoProcessing {
                 substituirRegiao(f, center, radius);
             }
             if (detectados > 0) {
-                System.out.println("Frame " + f + ": " + detectados + " círculos detectados.");
+                System.out.println("Frame " + f + ": " + detectados + " círculos detectados corretamente.");
+            } else {
+                System.out.println("Frame " + f + ": Nenhum círculo detectado.");
             }
         }
 
@@ -214,7 +216,7 @@ public class VideoProcessing {
             for (int yi = yInicio; yi <= yFim; yi++) {
                 for (int xi = xInicio; xi <= xFim; xi++) {
                     if (distancia(xi, yi, x, y) <= raio) {
-                        processed[f][yi][xi] = melhor[yi][xi];
+                        processed[f][yi][xi] = melhor[yi][xi];;
                     }
                 }
             }
@@ -229,6 +231,7 @@ public class VideoProcessing {
             Mat filtrado = new Mat();
             Imgproc.medianBlur(frame, filtrado, 3);
             matParaArray(filtrado, processed[f]);
+            System.out.println("Ruído corrigido no frame " + f);
         }
 
         private Mat arrayParaMat(byte[][] frame) {
