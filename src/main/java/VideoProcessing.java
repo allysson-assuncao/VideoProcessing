@@ -23,6 +23,7 @@ public class VideoProcessing {
         VideoCapture captura = new VideoCapture(caminho);
         if (!captura.isOpened()) {
             System.out.println("Vídeo está sendo processado por outra aplicação");
+            return  null;
         }
 
         // tamanho do frame

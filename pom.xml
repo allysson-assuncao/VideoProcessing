@@ -20,18 +20,6 @@
             <artifactId>opencv</artifactId>
             <version>4.9.0-0</version>
         </dependency>
-        <dependency>
-            <groupId>ai.kognition.pilecv4j</groupId>
-            <artifactId>opencv-windows-x86_64</artifactId>
-            <version>1.0-opencv4.5.2</version>
-            <type>jar</type>
-        </dependency>
-        <dependency>
-            <groupId>com.acidmanic</groupId>
-            <artifactId>opencvlink</artifactId>
-            <version>1.0.0</version>
-            <type>jar</type>
-        </dependency>
     </dependencies>
 
 </project>
