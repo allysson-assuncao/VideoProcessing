@@ -1,248 +1,139 @@
-/*
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 
 public class ImageProcessor extends Thread {
-    private final int inicio, fim;
-    private final byte[][][] original, corrigido;
+    private final int startFrame;
+    private final int endFrame;
+    private final byte[][][] originalFrames; // Para leitura dos pixels originais (vizinhos, temporais)
+    private final byte[][][] processedFrames; // Para escrita dos pixels corrigidos
 
-    public ImageProcessor(int inicio, int fim, byte[][][] original, byte[][][] corrigido) {
-        this.inicio = inicio;
-        this.fim = fim;
-        this.original = original;
-        this.corrigido = corrigido;
+    // --- Parâmetros para ajuste da correção ---
+    // Filtro de Mediana (Salt & Pepper)
+    private final int medianWindowSize = 3; // Janela 3x3. Pode ser 5 para 5x5, etc. (ímpar)
+
+    // Detecção de Borrões (Frames únicos)
+    private final int blobDarkThreshold = 30; // Abaixo deste valor é candidato a borrão escuro
+    private final int blobLightThreshold = 225; // Acima deste valor é candidato a borrão claro
+    // Diferença mínima para considerar um pixel como parte de um borrão temporal
+    private final int temporalDifferenceThreshold = 60;
+    // Diferença máxima entre pixels de frames adjacentes para serem considerados 'estáveis'
+    private final int temporalStabilityThreshold = 30;
+    // --- Fim dos Parâmetros ---
+
+
+    public ImageProcessor(int startFrame, int endFrame, byte[][][] originalFrames, byte[][][] processedFrames) {
+        this.startFrame = startFrame;
+        this.endFrame = endFrame; // O índice final é exclusivo
+        this.originalFrames = originalFrames;
+        this.processedFrames = processedFrames;
     }
 
     @Override
     public void run() {
-        for (int i = inicio; i < fim; i++) {
-            processarFrame(i);
+        if (originalFrames.length == 0) return;
+        int numTotalFrames = originalFrames.length;
+        int height = originalFrames[0].length;
+        int width = originalFrames[0][0].length;
+
+        // Etapa 1: Aplicar filtro de mediana para ruído Salt & Pepper
+        // Lê de originalFrames e escreve em processedFrames
+        for (int f = startFrame; f < endFrame; f++) {
+            for (int y = 0; y < height; y++) {
+                for (int x = 0; x < width; x++) {
+                    processedFrames[f][y][x] = calculateMedian(f, y, x, height, width);
+                }
+            }
         }
-    }
 
-    private void processarFrame(int f) {
-        corrigirBorroes(f);
-        corrigirRuido(f);
-    }
+        // Etapa 2: Remover borrões baseados em inconsistência temporal
+        // Compara originalFrames[f] com originalFrames[f-1] e originalFrames[f+1]
+        // Se um borrão for detectado em originalFrames[f], corrige em processedFrames[f]
+        for (int f = startFrame; f < endFrame; f++) {
+            for (int y = 0; y < height; y++) {
+                for (int x = 0; x < width; x++) {
+                    // Usamos o valor do pixel original para detectar o borrão
+                    byte originalPixelByte = originalFrames[f][y][x];
+                    int originalPixelValue = originalPixelByte & 0xFF;
 
-    private void removerSal(byte[][] frame) {
-        int rows = frame.length;
-        int cols = frame[0].length;
-        byte[][] novoFrame = new byte[rows][cols];
-        int LIMIAR = 30; // Limiar para considerar um pixel como outlier
+                    boolean isDarkBlobCandidate = originalPixelValue < blobDarkThreshold;
+                    boolean isLightBlobCandidate = originalPixelValue > blobLightThreshold;
 
-        for (int i = 0; i < rows; i++) {
-            for (int j = 0; j < cols; j++) {
-                // Coletar vizinhos 3x3
-                List<Byte> vizinhos = new ArrayList<>();
-                for (int di = -1; di <= 1; di++) {
-                    for (int dj = -1; dj <= 1; dj++) {
-                        int ni = i + di;
-                        int nj = j + dj;
-                        if (ni >= 0 && ni < rows && nj >= 0 && nj < cols) {
-                            vizinhos.add(frame[ni][nj]);
+                    if (isDarkBlobCandidate || isLightBlobCandidate) {
+                        byte prevFramePixelValue = -1; // Valor sentinela
+                        byte nextFramePixelValue = -1; // Valor sentinela
+                        boolean prevFrameExists = f > 0;
+                        boolean nextFrameExists = f < numTotalFrames - 1;
+
+                        int valPrev = -1, valNext = -1;
+
+                        if (prevFrameExists) {
+                            prevFramePixelValue = originalFrames[f - 1][y][x];
+                            valPrev = prevFramePixelValue & 0xFF;
                         }
-                    }
-                }
-                // Calcular mediana
-                Collections.sort(vizinhos);
-                byte mediana = vizinhos.get(vizinhos.size() / 2);
+                        if (nextFrameExists) {
+                            nextFramePixelValue = originalFrames[f + 1][y][x];
+                            valNext = nextFramePixelValue & 0xFF;
+                        }
 
-                // Verificar se pixel é outlier
-                if (Math.abs((frame[i][j] & 0xFF) - (mediana & 0xFF)) > LIMIAR) {
-                    novoFrame[i][j] = mediana;
-                } else {
-                    novoFrame[i][j] = frame[i][j];
-                }
-            }
-        }
+                        // Lógica de correção do borrão:
+                        // Se o pixel atual é muito diferente dos vizinhos temporais,
+                        // e os vizinhos temporais são semelhantes entre si (estáveis).
+                        if (prevFrameExists && nextFrameExists) {
+                            int diffCurrPrev = Math.abs(originalPixelValue - valPrev);
+                            int diffCurrNext = Math.abs(originalPixelValue - valNext);
+                            int diffPrevNext = Math.abs(valPrev - valNext);
 
-        // Copiar resultado de volta para o frame original
-        for (int i = 0; i < rows; i++) {
-            System.arraycopy(novoFrame[i], 0, frame[i], 0, cols);
-        }
-    }
-
-    private void corrigirBorroes(int f) {
-        // 1. Converter array para estrutura de imagem
-        byte[][] frame = original[f];
-        int altura = frame.length;
-        int largura = frame[0].length;
-
-        // 2. Detectar regiões suspeitas (implementação simplificada)
-        List<Circulo> borroes = detectarBorroes(frame, 30, 255, 50);
-
-        // 3. Substituir cada região detectada
-        for (Circulo circulo : borroes) {
-            substituirRegiao(f, circulo.centroX, circulo.centroY, circulo.raio);
-        }
-    }
-
-    private List<Circulo> detectarBorroes(byte[][] frame, int limiarPreto, int limiarBranco, int raioMinimo) {
-        List<Circulo> circulos = new ArrayList<>();
-
-        for (int y = raioMinimo; y < frame.length - raioMinimo; y++) {
-            for (int x = raioMinimo; x < frame[y].length - raioMinimo; x++) {
-                byte pixel = frame[y][x];
-
-                // Verificar se é região preta/branca
-                if ((pixel & 0xFF) < limiarPreto || (pixel & 0xFF) > limiarBranco) {
-                    // Verificar padrão circular
-                    if (verificarPadraoCircular(frame, x, y, raioMinimo)) {
-                        circulos.add(new Circulo(x, y, raioMinimo));
+                            if (diffCurrPrev > temporalDifferenceThreshold &&
+                                diffCurrNext > temporalDifferenceThreshold &&
+                                diffPrevNext < temporalStabilityThreshold) {
+                                // Borrão detectado, e frames adjacentes são estáveis e diferentes do atual.
+                                // Usar a média dos pixels dos frames adjacentes.
+                                processedFrames[f][y][x] = (byte) ((valPrev + valNext) / 2);
+                            }
+                        } else if (prevFrameExists) { // Último frame do segmento ou vídeo, só tem anterior
+                            int diffCurrPrev = Math.abs(originalPixelValue - valPrev);
+                            if (diffCurrPrev > temporalDifferenceThreshold) {
+                                processedFrames[f][y][x] = prevFramePixelValue;
+                            }
+                        } else if (nextFrameExists) { // Primeiro frame, só tem posterior
+                            int diffCurrNext = Math.abs(originalPixelValue - valNext);
+                            if (diffCurrNext > temporalDifferenceThreshold) {
+                                processedFrames[f][y][x] = nextFramePixelValue;
+                            }
+                        }
+                        // Se não for um borrão claro (temporalmente inconsistente),
+                        // o valor do filtro de mediana permanece.
                     }
                 }
             }
         }
-        return circulos;
     }
 
-    private boolean verificarPadraoCircular(byte[][] frame, int xCentro, int yCentro, int raio) {
-        int contagemEscura = 0;
-        int totalAmostras = 0;
-        byte limiar = 30; // Valor para considerar como preto (0-255)
+    private byte calculateMedian(int frameIndex, int y, int x, int height, int width) {
+        List<Byte> neighbors = new ArrayList<>();
+        int halfWindow = medianWindowSize / 2; // Para uma janela 3x3, halfWindow = 1
 
-        // Verificar em 8 direções cardeais
-        for (int angulo = 0; angulo < 360; angulo += 45) {
-            double radianos = Math.toRadians(angulo);
-            int x = xCentro + (int) (raio * Math.cos(radianos));
-            int y = yCentro + (int) (raio * Math.sin(radianos));
+        for (int i = -halfWindow; i <= halfWindow; i++) {
+            for (int j = -halfWindow; j <= halfWindow; j++) {
+                int currentY = y + i;
+                int currentX = x + j;
 
-            // Verificar limites da imagem
-            if (y >= 0 && y < frame.length && x >= 0 && x < frame[0].length) {
-                totalAmostras++;
-                if ((frame[y][x] & 0xFF) < limiar) contagemEscura++;
-            }
-        }
-
-        // Se pelo menos 6 das 8 direções forem escuras
-        return contagemEscura >= 6 && totalAmostras >= 6;
-    }
-
-    private void substituirRegiao(int indiceFrame, int centroX, int centroY, int raio) {
-        int margem = 2; // Número de frames anteriores/posteriores para análise
-
-        List<byte[][]> candidatos = new ArrayList<>();
-
-        // Coletar frames candidatos (evitando limites do array)
-        for (int i = Math.max(0, indiceFrame - margem);
-             i <= Math.min(original.length - 1, indiceFrame + margem);
-             i++) {
-            if (i != indiceFrame) {
-                candidatos.add(original[i]);
-            }
-        }
-
-        // Processar cada pixel na região circular
-        for (int y = centroY - raio; y <= centroY + raio; y++) {
-            for (int x = centroX - raio; x <= centroX + raio; x++) {
-                // Verificar se está dentro do círculo e dos limites da imagem
-                if (y >= 0 && y < corrigido[0].length &&
-                        x >= 0 && x < corrigido[0][0].length &&
-                        distancia(x, y, centroX, centroY) <= raio) {
-
-                    // Calcular novo valor baseado nos candidatos
-                    corrigido[indiceFrame][y][x] = calcularValorCorrigido(candidatos, x, y);
+                // Verifica se o vizinho está dentro dos limites do frame
+                if (currentY >= 0 && currentY < height && currentX >= 0 && currentX < width) {
+                    // Adiciona o pixel do frame ORIGINAL para o cálculo da mediana
+                    neighbors.add(originalFrames[frameIndex][currentY][currentX]);
                 }
             }
         }
-    }
 
-    private double distancia(int x1, int y1, int x2, int y2) {
-        int dx = x2 - x1;
-        int dy = y2 - y1;
-        return Math.sqrt(dx * dx + dy * dy);
-    }
-
-    private byte calcularValorCorrigido(List<byte[][]> candidatos, int x, int y) {
-        List<Integer> valores = new ArrayList<>();
-
-        // Coletar valores dos frames candidatos
-        for (byte[][] frame : candidatos) {
-            if (y < frame.length && x < frame[y].length) {
-                valores.add((int) frame[y][x] & 0xFF);
-            }
+        if (neighbors.isEmpty()) {
+            // Caso improvável se halfWindow >= 0, mas como fallback retorna o pixel original
+            return originalFrames[frameIndex][y][x];
         }
 
-        // Se não houver candidatos válidos, retorna o original
-        if (valores.isEmpty()) return 0; // Ou tratar adequadamente
-
-        // Calcular mediana
-        Collections.sort(valores);
-        int mediana;
-        if (valores.size() % 2 == 0) {
-            mediana = (valores.get(valores.size() / 2 - 1) + valores.get(valores.size() / 2)) / 2;
-        } else {
-            mediana = valores.get(valores.size() / 2);
-        }
-
-        return (byte) mediana;
-    }
-
-    private void corrigirRuido(int f) {
-        byte[][] frame = corrigido[f];
-        byte[][] copia = copiarFrame(frame);
-
-        for (int y = 1; y < frame.length - 1; y++) {
-            for (int x = 1; x < frame[y].length - 1; x++) {
-                // Coletar vizinhança 3x3
-                byte[] vizinhanca = new byte[9];
-                int i = 0;
-                for (int dy = -1; dy <= 1; dy++) {
-                    for (int dx = -1; dx <= 1; dx++) {
-                        vizinhanca[i++] = copia[y + dy][x + dx];
-                    }
-                }
-
-                // Ordenar e pegar mediana
-                Arrays.sort(vizinhanca);
-                byte mediana = vizinhanca[4];
-
-                // Substituir se for outlier
-                byte atual = frame[y][x];
-                if (Math.abs((atual & 0xFF) - (mediana & 0xFF)) > 40) { // Threshold ajustável
-                    frame[y][x] = mediana;
-                }
-            }
-        }
-    }
-
-    private byte[][] copiarFrame(byte[][] original) {
-        byte[][] copia = new byte[original.length][];
-        for (int i = 0; i < original.length; i++) {
-            copia[i] = Arrays.copyOf(original[i], original[i].length);
-        }
-        return copia;
-    }
-
-
-    private static class Circulo {
-        int centroX, centroY, raio;
-
-        public Circulo(int centroX, int centroY, int raio) {
-            this.centroX = centroX;
-            this.centroY = centroY;
-            this.raio = raio;
-        }
+        Collections.sort(neighbors);
+        // Retorna o elemento do meio da lista ordenada
+        return neighbors.get(neighbors.size() / 2);
     }
 }
-
-*/
-/*
-
-    1 - normal
-    2 - borrao preto
-    3 - borrao preto
-    4 - borrao preto
-    5 - normal
-    6 - normal
-    7 - normal
-
-    1 1 1 1
-    1 1 1 1
-    1 1 1 1
-    1 1 1 1
-
- */

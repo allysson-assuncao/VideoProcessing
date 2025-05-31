@@ -150,7 +150,7 @@ public class VideoProcessing {
         System.out.println("Concluído!");
     }
 
-    static class ImageProcessor extends Thread {
+    /*static class ImageProcessor extends Thread {
         private final int start, end;
         private final byte[][][] original, processed;
 
@@ -247,5 +247,5 @@ public class VideoProcessing {
                 mat.get(y, 0, array[y]);
             }
         }
-    }
+    }*/
 }
