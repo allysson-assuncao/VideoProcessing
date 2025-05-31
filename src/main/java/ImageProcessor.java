@@ -13,10 +13,10 @@ public class ImageProcessor extends Thread {
     private final int medianWindowSize = 3; // Janela 3x3. Pode ser 5 para 5x5, etc. (ímpar)
 
     // Detecção de Borrões (Frames únicos)
-    private final int blobDarkThreshold = 30; // Abaixo deste valor é candidato a borrão escuro
-    private final int blobLightThreshold = 225; // Acima deste valor é candidato a borrão claro
+    private final int blobDarkThreshold = 55; // Abaixo deste valor é candidato a borrão escuro
+    private final int blobLightThreshold = 200; // Acima deste valor é candidato a borrão claro
     // Diferença mínima para considerar um pixel como parte de um borrão temporal
-    private final int temporalDifferenceThreshold = 60;
+    private final int temporalDifferenceThreshold = 30;
     // Diferença máxima entre pixels de frames adjacentes para serem considerados 'estáveis'
     private final int temporalStabilityThreshold = 30;
     // --- Fim dos Parâmetros ---
@@ -35,13 +35,22 @@ public class ImageProcessor extends Thread {
         int numTotalFrames = originalFrames.length;
         int height = originalFrames[0].length;
         int width = originalFrames[0][0].length;
+        int LIMIAR_MEDIANA = 50;
 
         // Etapa 1: Aplicar filtro de mediana para ruído Salt & Pepper
         // Lê de originalFrames e escreve em processedFrames
         for (int f = startFrame; f < endFrame; f++) {
-            for (int y = 0; y < height; y++) {
-                for (int x = 0; x < width; x++) {
-                    processedFrames[f][y][x] = calculateMedian(f, y, x, height, width);
+            for (int i = 0; i < 5; i++) {
+                for (int y = 0; y < height; y++) {
+                    for (int x = 0; x < width; x++) {
+                        byte originalPixel = originalFrames[f][y][x]; // Ou processedFrames se você quer encadear
+                        byte mediana = calculateMedian(f, y, x, height, width); // Baseado no originalFrames
+                        if (Math.abs((originalPixel & 0xFF) - (mediana & 0xFF)) > LIMIAR_MEDIANA) { // Novo nome para clareza
+                            processedFrames[f][y][x] = mediana;
+                        } else {
+                            processedFrames[f][y][x] = originalPixel; // Mantém o original se não for tão diferente
+                        }
+                    }
                 }
             }
         }
@@ -85,20 +94,23 @@ public class ImageProcessor extends Thread {
                             int diffPrevNext = Math.abs(valPrev - valNext);
 
                             if (diffCurrPrev > temporalDifferenceThreshold &&
-                                diffCurrNext > temporalDifferenceThreshold &&
-                                diffPrevNext < temporalStabilityThreshold) {
+                                    diffCurrNext > temporalDifferenceThreshold &&
+                                    diffPrevNext < temporalStabilityThreshold) {
                                 // Borrão detectado, e frames adjacentes são estáveis e diferentes do atual.
                                 // Usar a média dos pixels dos frames adjacentes.
+                                System.out.println("Borrão identificado!");
                                 processedFrames[f][y][x] = (byte) ((valPrev + valNext) / 2);
                             }
                         } else if (prevFrameExists) { // Último frame do segmento ou vídeo, só tem anterior
                             int diffCurrPrev = Math.abs(originalPixelValue - valPrev);
                             if (diffCurrPrev > temporalDifferenceThreshold) {
+                                System.out.println("Borrão identificado!");
                                 processedFrames[f][y][x] = prevFramePixelValue;
                             }
                         } else if (nextFrameExists) { // Primeiro frame, só tem posterior
                             int diffCurrNext = Math.abs(originalPixelValue - valNext);
                             if (diffCurrNext > temporalDifferenceThreshold) {
+                                System.out.println("Borrão identificado!");
                                 processedFrames[f][y][x] = nextFramePixelValue;
                             }
                         }

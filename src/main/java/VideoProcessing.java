@@ -36,7 +36,7 @@ public class VideoProcessing {
         int largura = (int) captura.get(Videoio.CAP_PROP_FRAME_WIDTH);
         int altura = (int) captura.get(Videoio.CAP_PROP_FRAME_HEIGHT);
 
-        // não conhecço a quantidade dos frames (melhorar com outra lib) :(
+        // não conheço a quantidade dos frames (melhorar com outra lib) :(
         List<byte[][]> frames = new ArrayList<>();
 
         // matriz RGB mesmo preto e branco?? - uso na leitura do frame
