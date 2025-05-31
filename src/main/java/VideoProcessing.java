@@ -15,7 +15,13 @@ public class VideoProcessing {
 
     // Carrega a biblioteca nativa (via nu.pattern.OpenCV) assim que a classe é carregada na VM.
     static {
-        nu.pattern.OpenCV.loadLocally();
+        try {
+            nu.pattern.OpenCV.loadLocally();
+            System.out.println("OpenCV carregado com sucesso!");
+        } catch (Exception e) {
+            System.err.println("Erro ao carregar OpenCV: " + e.getMessage());
+            e.printStackTrace();
+        }
     }
 
     public static byte[][][] carregarVideo(String caminho) {
@@ -23,7 +29,7 @@ public class VideoProcessing {
         VideoCapture captura = new VideoCapture(caminho);
         if (!captura.isOpened()) {
             System.out.println("Vídeo está sendo processado por outra aplicação");
-            return  null;
+            return null;
         }
 
         // tamanho do frame
