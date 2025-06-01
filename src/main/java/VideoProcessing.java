@@ -122,7 +122,7 @@ public class VideoProcessing {
         System.out.println("Carregando o vídeo... " + caminhoVideo);
         long tempoI = System.currentTimeMillis();
         byte[][][] pixels = carregarVideo(caminhoVideo);
-        byte[][][] originalPixels = deepCopy(pixels);
+            byte[][][] originalPixels = deepCopy(pixels);
 
         System.out.printf("Frames: %d Resolução: %d x %d \n", pixels.length, pixels[0][0].length, pixels[0].length);
 
