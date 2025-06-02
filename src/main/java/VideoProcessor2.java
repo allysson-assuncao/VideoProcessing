@@ -11,21 +11,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-// Classe auxiliar para retornar dados do vídeo carregado (permanece a mesma)
-class VideoData {
-    final byte[][][] pixels;
-    final double fps;
-    final int largura;
-    final int altura;
-
-    public VideoData(byte[][][] pixels, double fps, int largura, int altura) {
-        this.pixels = pixels;
-        this.fps = fps;
-        this.largura = largura;
-        this.altura = altura;
-    }
-}
-
 public class VideoProcessor2 {
 
     public static VideoData carregarVideo(String caminho) throws FrameGrabber.Exception {
@@ -240,14 +225,14 @@ public class VideoProcessor2 {
         try {
             VideoData dadosVideo = carregarVideo(caminhoVideoEntrada);
 
-            if (dadosVideo == null || dadosVideo.pixels == null) {
+            if (dadosVideo == null || dadosVideo.pixels() == null) {
                 System.err.println("Falha ao carregar o vídeo.");
                 return;
             }
 
-            byte[][][] pixels = dadosVideo.pixels;
+            byte[][][] pixels = dadosVideo.pixels();
             System.out.printf("Vídeo carregado: %d frames, Resolução: %d x %d, FPS: %.2f\n",
-                    pixels.length, dadosVideo.largura, dadosVideo.altura, dadosVideo.fps);
+                    pixels.length, dadosVideo.largura(), dadosVideo.altura(), dadosVideo.fps());
 
             System.out.println("Aplicando filtro de mediana (remover sal e pimenta)...");
             for (int i = 0; i < 1; i++) { // Ajuste o número de iterações conforme necessário
@@ -259,7 +244,7 @@ public class VideoProcessor2 {
             removerBorroesTempo(pixels);
 
             System.out.println("Salvando vídeo processado em: " + caminhoVideoSaida);
-            gravarVideo(pixels, caminhoVideoSaida, dadosVideo.fps, dadosVideo.largura, dadosVideo.altura);
+            gravarVideo(pixels, caminhoVideoSaida, dadosVideo.fps(), dadosVideo.largura(), dadosVideo.altura());
 
             System.out.println("Processamento concluído!");
 
