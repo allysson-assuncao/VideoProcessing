@@ -16,7 +16,6 @@ public class VideoProcessing {
             nu.pattern.OpenCV.loadLocally();
         } catch (Exception e) {
             System.err.println("Erro ao carregar OpenCV: " + e.getMessage());
-            // Considerar lançar uma RuntimeException ou tratar de forma mais robusta
         }
     }
 
@@ -75,10 +74,7 @@ public class VideoProcessing {
         int altura = pixels[0].length;
         int largura = pixels[0][0].length;
 
-        // Tentar outros codecs se 'avc1' falhar ou não estiver disponível
-        int fourcc = VideoWriter.fourcc('a', 'v', 'c', '1'); // .mp4 H.264
-        // int fourcc = VideoWriter.fourcc('X', 'V', 'I', 'D'); // .avi Xvid
-        // int fourcc = VideoWriter.fourcc('M', 'J', 'P', 'G'); // .avi Motion JPEG
+        int fourcc = VideoWriter.fourcc('a', 'v', 'c', '1');
 
         VideoWriter escritor = new VideoWriter(caminho, fourcc, fps, new Size(largura, altura), false); // false para grayscale
 
