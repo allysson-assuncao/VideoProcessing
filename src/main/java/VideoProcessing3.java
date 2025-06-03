@@ -138,10 +138,10 @@ public class VideoProcessing3 {
         int altura = pixels[0].length;
         int largura = pixels[0][0].length;
 
-        for (int f = 1; f < qFrames - 1; f++) {
+        for (int f = 1; f < qFrames - 2; f++) {
             byte[][] anterior = pixels[f - 1];
             byte[][] atual = pixels[f];
-            byte[][] proximo = pixels[f + 1];
+            byte[][] proximo = pixels[f + 2];
             byte[][] novoFrame = new byte[altura][largura];
 
             for (int y = 0; y < altura; y++) {
@@ -150,8 +150,12 @@ public class VideoProcessing3 {
                     int v2 = atual[y][x] & 0xFF;
                     int v3 = proximo[y][x] & 0xFF;
 
-                    int media = (v1 + v2 + v3) / 3;
-                    novoFrame[y][x] = (byte) media;
+                    int media = (v1 + v3) / 2;
+                    if(Math.abs(v1 - v3) < 50 && Math.abs(media - v2) > 40){
+                        novoFrame[y][x] = (byte) media;
+                    } else {
+                        novoFrame[y][x] = atual[y][x];
+                    }
                 }
             }
 
@@ -173,14 +177,16 @@ public class VideoProcessing3 {
                 pixels.length, pixels[0][0].length, pixels[0].length);
 
         //Pro 1
-        for(int i = 0; i < 12; i++){
+        for(int i = 0; i < 5; i++){
             System.out.println("processamento remove ruído " + i + 1);
             removerSalPimenta(pixels, 1);
         }
 
         //Pro 2
-        System.out.println("processamento remove ruído 13");
-        removerBorroesTempo(pixels);
+        for(int i = 0; i < 1; i++) {
+            System.out.println("processamento remove ruído 13");
+            removerBorroesTempo(pixels);
+        }
 
         System.out.println("Salvando...  " + caminhoGravar);
         gravarVideo(pixels, caminhoGravar, fps);
