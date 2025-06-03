@@ -123,7 +123,7 @@ public class VideoProcessing {
 
     public static void main(String[] args) {
         String caminhoVideo = "video-3s.mp4"; // Coloque seu vídeo de teste aqui
-        String caminhoGravar = "video-3s-corrigido-paralelo.mp4";
+        String caminhoGravar = "video-3s3.mp4";
         double fps = 24.0; // Ajuste conforme o FPS do seu vídeo original
 
         System.out.println("Carregando o vídeo... " + caminhoVideo);
@@ -136,8 +136,7 @@ public class VideoProcessing {
         }
         byte[][][] originalPixels = deepCopy(pixels); // Cópia para leitura segura, especialmente para o borrão
 
-        System.out.printf("Frames: %d   Resolução: %d x %d \n",
-                pixels.length, pixels[0][0].length, pixels[0].length);
+        /*System.out.printf("Frames: %d   Resolução: %d x %d \n", pixels.length, pixels[0][0].length, pixels[0].length);*/
 
         int numCores = Runtime.getRuntime().availableProcessors();
         // Para testes, você pode querer limitar o número de threads
