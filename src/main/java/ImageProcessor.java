@@ -11,7 +11,7 @@ class ImageProcessor extends Thread {
 
     public ImageProcessor(int startFrame, int endFrame, byte[][][] originalFrames, byte[][][] processedFrames, int numPassesSalPimenta, int raioSalPimenta) {
         this.startFrame = startFrame;
-        this.endFrame = endFrame; // O índice final é exclusivo
+        this.endFrame = endFrame;
         this.originalFrames = originalFrames;
         this.processedFrames = processedFrames;
         this.numPassesSalPimenta = numPassesSalPimenta;
@@ -31,7 +31,7 @@ class ImageProcessor extends Thread {
         // Etapa 2: Remover Ruído Sal e Pimenta (iterativamente)
         // Lê de processedFrames (que agora contém o resultado do borrão) e escreve de volta em processedFrames
         for (int i = 0; i < numPassesSalPimenta; i++) {
-            // System.out.println("Thread " + getId() + " aplicando sal e pimenta, passe " + (i + 1));
+            System.out.println("Thread " + getId() + " aplicando sal e pimenta, passe " + (i + 1));
             applySaltAndPepper();
         }
     }

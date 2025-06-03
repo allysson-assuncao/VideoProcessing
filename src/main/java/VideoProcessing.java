@@ -142,13 +142,12 @@ public class VideoProcessing {
         int numCores = Runtime.getRuntime().availableProcessors();
         // Para testes, você pode querer limitar o número de threads
         // int numThreads = Math.min(numCores, 4); // Exemplo: usar no máximo 4 threads
-        int numThreads = numCores;
-        System.out.println("Utilizando " + numThreads + " threads.");
+        System.out.println("Utilizando " + numCores + " threads.");
 
         List<ImageProcessor> threads = new ArrayList<>();
         int totalFrames = pixels.length;
-        int framesPorThread = totalFrames / numThreads;
-        int framesRestantes = totalFrames % numThreads;
+        int framesPorThread = totalFrames / numCores;
+        int framesRestantes = totalFrames % numCores;
         int frameAtualInicio = 0;
 
         // Parâmetros dos filtros
@@ -157,7 +156,7 @@ public class VideoProcessing {
 
         long tempoInicioProcessamento = System.currentTimeMillis();
 
-        for (int i = 0; i < numThreads; i++) {
+        for (int i = 0; i < numCores; i++) {
             int framesParaEstaThread = framesPorThread + (i < framesRestantes ? 1 : 0);
             if (framesParaEstaThread == 0) continue; // Evitar criar threads sem frames para processar
 
