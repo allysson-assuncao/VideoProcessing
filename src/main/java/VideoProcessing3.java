@@ -176,16 +176,16 @@ public class VideoProcessing3 {
         System.out.printf("Frames: %d   Resolução: %d x %d \n",
                 pixels.length, pixels[0][0].length, pixels[0].length);
 
-        //Pro 1
-        for(int i = 0; i < 5; i++){
-            System.out.println("processamento remove ruído " + i + 1);
-            removerSalPimenta(pixels, 1);
-        }
-
         //Pro 2
         for(int i = 0; i < 1; i++) {
-            System.out.println("processamento remove ruído 13");
+            System.out.println("processamento remove borrão");
             removerBorroesTempo(pixels);
+        }
+
+        //Pro 1
+        for(int i = 0; i < 10; i++){
+            System.out.println("processamento remove sal e pimenta " + (i + 1));
+            removerSalPimenta(pixels, 1);
         }
 
         System.out.println("Salvando...  " + caminhoGravar);
