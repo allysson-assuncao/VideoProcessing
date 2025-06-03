@@ -10,9 +10,8 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-public class VideoProcessing3 {
+public class SequentialVideoProcessing {
 
-    /* Carrega a biblioteca nativa (via nu.pattern.OpenCV) assim que a classe é carregada na VM. */
     static {
         nu.pattern.OpenCV.loadLocally();
     }
@@ -20,18 +19,12 @@ public class VideoProcessing3 {
     public static byte[][][] carregarVideo(String caminho) {
 
         VideoCapture captura = new VideoCapture(caminho);
-        if (!captura.isOpened()) {
-            System.out.println("Vídeo está sendo processado por outra aplicação");
-        }
 
-        //tamanho do frame
         int largura = (int) captura.get(Videoio.CAP_PROP_FRAME_WIDTH);
         int altura = (int) captura.get(Videoio.CAP_PROP_FRAME_HEIGHT);
 
-        //não conhecço a quantidade dos frames (melhorar com outra lib) :(
         List<byte[][]> frames = new ArrayList<>();
 
-        //matriz RGB mesmo preto e branco?? - uso na leitura do frame
         Mat matrizRGB = new Mat();
 
         //criando uma matriz temporária em escala de cinza
@@ -77,7 +70,7 @@ public class VideoProcessing3 {
                 caminho, fourcc, fps, new Size(largura, altura), true);
 
         if (!escritor.isOpened()) {
-            System.err.println("Erro ao gravar vídeo no caminho sugerido");
+            System.err.println("Erro ao gravar vídeo no caminho corrigido");
         }
 
         Mat matrizRgb = new Mat(altura, largura, CvType.CV_8UC3); //voltamos a operar no RGB (limitação da lib)
