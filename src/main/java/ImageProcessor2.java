@@ -47,33 +47,61 @@ class ImageProcessor2 extends Thread {
         }
     }
 
+    private int getNeighborhoodAverage(byte[][] frame, int centerY, int centerX) {
+        int sum = 0;
+        int count = 0;
+        int frameHeight = frame.length;
+        int frameWidth = frame[0].length;
+
+        for (int dy = -1; dy <= 1; dy++) {
+            for (int dx = -1; dx <= 1; dx++) {
+                int ny = centerY + dy;
+                int nx = centerX + dx;
+
+                // Garante que o vizinho está dentro dos limites do frame
+                if (ny >= 0 && ny < frameHeight && nx >= 0 && nx < frameWidth) {
+                    sum += frame[ny][nx] & 0xFF;
+                    count++;
+                }
+            }
+        }
+        return (count == 0) ? 0 : sum / count;
+    }
+
     private void applyTemporalBlurOnTile() {
-        // As dimensões do tile COM padding
         int paddedWidth = sourceTileWithPadding[0].length;
 
-        // Frames de referência para o borrão temporal
         byte[][] anterior = originalFrames[frameIndex - 1];
         byte[][] proximo = originalFrames[frameIndex + 2];
 
-        // Itera apenas sobre os pixels que correspondem à tira original, usando o padding para vizinhança
+        // Itera sobre os pixels da tira original
         for (int y = padding; y < tileOriginalHeight + padding; y++) {
             for (int x = padding; x < paddedWidth - padding; x++) {
-                // Coordenadas correspondentes no frame completo
                 int fullFrameY = tileOriginalY + (y - padding);
                 int fullFrameX = x - padding;
 
-                int v1 = anterior[fullFrameY][fullFrameX] & 0xFF;
-                int v2 = sourceTileWithPadding[y][x] & 0xFF; // Pixel original do frame atual (está no tile)
-                int v3 = proximo[fullFrameY][fullFrameX] & 0xFF;
+                // 1. Calcula a média da vizinhança nos frames de referência
+                int avg_v1 = getNeighborhoodAverage(anterior, fullFrameY, fullFrameX);
+                int avg_v3 = getNeighborhoodAverage(proximo, fullFrameY, fullFrameX);
 
-                int media = (v1 + v3) / 2;
+                // 2. Pega o valor do pixel central do frame atual
+                int v2_center = sourceTileWithPadding[y][x] & 0xFF;
+
+                // 3. Lógica de decisão aprimorada
+                int mediaRegional = (avg_v1 + avg_v3) / 2;
                 byte finalPixel;
-                if (Math.abs(v1 - v3) < 50 && Math.abs(media - v2) > 40) {
-                    finalPixel = (byte) media;
+
+                // Condição 1: A região 3x3 é estável entre os frames de referência?
+                // Condição 2: O pixel central atual é um "outlier" em relação à sua região?
+                // Ajustamos os limiares, pois médias são menos voláteis que pixels únicos.
+                if (Math.abs(avg_v1 - avg_v3) < 35 && Math.abs(mediaRegional - v2_center) > 25) {
+                    // Se sim, corrige o pixel usando a média da região temporal
+                    finalPixel = (byte) mediaRegional;
                 } else {
-                    finalPixel = (byte) v2;
+                    // Senão, mantém o pixel original
+                    finalPixel = (byte) v2_center;
                 }
-                // Escreve o resultado na matriz de saída na posição correta
+
                 outputFrame[fullFrameY][fullFrameX] = finalPixel;
             }
         }
