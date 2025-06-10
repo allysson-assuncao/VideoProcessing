@@ -107,7 +107,7 @@ class ImageProcessor2 extends Thread {
         }
     }*/
 
-    private void applyTemporalBlurOnTile() {
+    /*private void applyTemporalBlurOnTile() {
         int paddedWidth = sourceTileWithPadding[0].length;
 
         byte[][] anterior = originalFrames[frameIndex - 1];
@@ -136,6 +136,99 @@ class ImageProcessor2 extends Thread {
                 }
 
                 outputFrame[fullFrameY][fullFrameX] = finalPixel;
+            }
+        }
+    }*/
+
+    private double[] getNeighborhoodStats(byte[][] frame, int centerY, int centerX) {
+        int frameHeight = frame.length;
+        int frameWidth = frame[0].length;
+        ArrayList<Integer> values = new ArrayList<>();
+        double sum = 0;
+
+        for (int dy = -1; dy <= 1; dy++) {
+            for (int dx = -1; dx <= 1; dx++) {
+                int ny = centerY + dy;
+                int nx = centerX + dx;
+                if (ny >= 0 && ny < frameHeight && nx >= 0 && nx < frameWidth) {
+                    int val = frame[ny][nx] & 0xFF;
+                    values.add(val);
+                    sum += val;
+                }
+            }
+        }
+
+        if (values.isEmpty()) {
+            return new double[]{0, 0};
+        }
+
+        double mean = sum / values.size();
+        double stdDev = 0;
+        for (int val : values) {
+            stdDev += Math.pow(val - mean, 2);
+        }
+        stdDev = Math.sqrt(stdDev / values.size());
+
+        return new double[]{mean, stdDev};
+    }
+
+    /**
+     * MÉTODO DE CORREÇÃO DE BLUR TOTALMENTE REFEITO
+     * Usa limiares adaptativos e mesclagem suave (alpha blending) para um resultado superior.
+     */
+    private void applyTemporalBlurOnTile() {
+        int paddedWidth = sourceTileWithPadding[0].length;
+
+        byte[][] anterior = originalFrames[frameIndex - 1];
+        byte[][] proximo = originalFrames[frameIndex + 2];
+
+        // Parâmetros da nova lógica
+        final double SENSITIVITY = 1.2; // Quão sensível o detector é. Maior = mais sensível.
+        final double TEXTURE_DAMPENING = 0.5; // Quão fortemente a textura local reduz a correção.
+
+        for (int y = padding; y < tileOriginalHeight + padding; y++) {
+            for (int x = padding; x < paddedWidth - padding; x++) {
+                int fullFrameY = tileOriginalY + (y - padding);
+                int fullFrameX = x - padding;
+
+                // 1. Analisa os frames de referência (como antes, mas usando a média)
+                double[] statsAnterior = getNeighborhoodStats(anterior, fullFrameY, fullFrameX);
+                double[] statsProximo = getNeighborhoodStats(proximo, fullFrameY, fullFrameX);
+                double meanAnterior = statsAnterior[0];
+                double meanProximo = statsProximo[0];
+
+                // Só continua se a região temporal for relativamente estável
+                if (Math.abs(meanAnterior - meanProximo) < 30) {
+                    double expectedValue = (meanAnterior + meanProximo) / 2.0;
+                    int currentValue = sourceTileWithPadding[y][x] & 0xFF;
+
+                    // 2. Analisa a textura do frame ATUAL para criar um limiar dinâmico
+                    double[] statsAtual = getNeighborhoodStats(sourceTileWithPadding, y, x); // Usa o tile com padding, que é mais rápido
+                    double localStdDev = statsAtual[1]; // Desvio padrão local = indicador de textura
+
+                    double difference = Math.abs(currentValue - expectedValue);
+
+                    // O limiar aumenta em áreas com mais textura, para preservar detalhes
+                    double dynamicThreshold = 15 + localStdDev * TEXTURE_DAMPENING;
+
+                    // 3. Aplica correção com mesclagem suave (Alpha Blending)
+                    if (difference > dynamicThreshold) {
+                        // Calcula a força da correção (alpha)
+                        // Se a diferença for muito maior que o limiar, alpha se aproxima de 1.0
+                        // Se for pouco maior, alpha é pequeno, resultando em uma correção sutil.
+                        double alpha = Math.min(1.0, (difference - dynamicThreshold) / (40.0 * SENSITIVITY));
+
+                        // Mescla o valor original com o valor esperado
+                        int blendedValue = (int) Math.round((1.0 - alpha) * currentValue + alpha * expectedValue);
+                        outputFrame[fullFrameY][fullFrameX] = (byte) blendedValue;
+                    } else {
+                        // Nenhuma correção necessária
+                        outputFrame[fullFrameY][fullFrameX] = (byte) currentValue;
+                    }
+                } else {
+                    // Região temporal instável, não faz nada para evitar criar novos artefatos
+                    outputFrame[fullFrameY][fullFrameX] = sourceTileWithPadding[y][x];
+                }
             }
         }
     }
