@@ -68,7 +68,7 @@ class ImageProcessor2 extends Thread {
         return (count == 0) ? 0 : sum / count;
     }
 
-    private void applyTemporalBlurOnTile() {
+    /*private void applyTemporalBlurOnTile() {
         int paddedWidth = sourceTileWithPadding[0].length;
 
         byte[][] anterior = originalFrames[frameIndex - 1];
@@ -100,6 +100,39 @@ class ImageProcessor2 extends Thread {
                 } else {
                     // Senão, mantém o pixel original
                     finalPixel = (byte) v2_center;
+                }
+
+                outputFrame[fullFrameY][fullFrameX] = finalPixel;
+            }
+        }
+    }*/
+
+    private void applyTemporalBlurOnTile() {
+        int paddedWidth = sourceTileWithPadding[0].length;
+
+        byte[][] anterior = originalFrames[frameIndex - 1];
+        byte[][] proximo = originalFrames[frameIndex + 2];
+
+        // Itera sobre os pixels da tira original
+        for (int y = padding; y < tileOriginalHeight + padding; y++) {
+            for (int x = padding; x < paddedWidth - padding; x++) {
+                int fullFrameY = tileOriginalY + (y - padding);
+                int fullFrameX = x - padding;
+
+                // 1. Pega o valor do pixel central nos frames de referência e atual
+                int v1 = anterior[fullFrameY][fullFrameX] & 0xFF;
+                int v2 = sourceTileWithPadding[y][x] & 0xFF;
+                int v3 = proximo[fullFrameY][fullFrameX] & 0xFF;
+
+                // 2. Lógica de decisão (ajuste os limiares conforme necessário)
+                int media = (v1 + v3) / 2;
+                byte finalPixel;
+
+                // Condição: A diferença entre v1 e v3 é pequena e v2 é um outlier?
+                if (Math.abs(v1 - v3) < 35 && Math.abs(media - v2) > 25) {
+                    finalPixel = (byte) media;
+                } else {
+                    finalPixel = (byte) v2;
                 }
 
                 outputFrame[fullFrameY][fullFrameX] = finalPixel;
