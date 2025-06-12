@@ -1,4 +1,5 @@
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 
 /**
@@ -52,7 +53,7 @@ public class ImageProcessor extends Thread {
         if ("saltAndPepper".equals(mode)) {
             applySaltAndPepperFilter();
         } else if ("blur".equals(mode)) {
-            applyBlurFilter();
+            applySmartBlurFilter();
         }
     }
 
@@ -83,19 +84,81 @@ public class ImageProcessor extends Thread {
     /**
      * Aplica o filtro temporal para remover borrões.
      */
-    private void applyBlurFilter() {
+    private int getVizinhancaMediana(byte[][] frame) {
+        // Como o frame já é uma vizinhança 3x3, podemos simplificar
+        int[] pixels = new int[9];
+        int k = 0;
+        for (int i = 0; i < 3; i++) {
+            for (int j = 0; j < 3; j++) {
+                pixels[k++] = frame[i][j] & 0xFF;
+            }
+        }
+        Arrays.sort(pixels);
+        return pixels[4]; // O elemento do meio em um array de 9 posições
+    }
+
+    private byte[][] getVizinhanca(byte[][] frame, int cy, int cx) {
+        byte[][] vizinhanca = new byte[3][3];
+        int height = frame.length;
+        int width = frame[0].length;
+
+        for (int dy = -1; dy <= 1; dy++) {
+            for (int dx = -1; dx <= 1; dx++) {
+                int ny = cy + dy;
+                int nx = cx + dx;
+
+                // Se o vizinho estiver fora dos limites, repete o pixel da borda (clamp to edge)
+                if (ny < 0) ny = 0;
+                if (ny >= height) ny = height - 1;
+                if (nx < 0) nx = 0;
+                if (nx >= width) nx = width - 1;
+
+                vizinhanca[dy + 1][dx + 1] = frame[ny][nx];
+            }
+        }
+        return vizinhanca;
+    }
+
+    /**
+     * VERSÃO APRIMORADA do filtro de borrões.
+     * Agora verifica a estabilidade da vizinhança antes de corrigir um pixel.
+     */
+    private void applySmartBlurFilter() {
         int width = processedFrame[0].length;
         for (int y = startY; y < endY; y++) {
             for (int x = 0; x < width; x++) {
-                // Acesso direto aos frames, pois não há vizinhança espacial aqui
-                int v1 = previousFrame[y][x] & 0xFF;
+                // Pega o valor do pixel atual
                 int v2 = originalFrame[y][x] & 0xFF;
-                int v3 = nextFrame[y][x] & 0xFF;
 
-                int media = (v1 + v3) / 2;
-                if (Math.abs(v1 - v3) < 50 && Math.abs(media - v2) > 40) {
-                    processedFrame[y][x] = (byte) media;
+                // Pega a vizinhança 3x3 dos frames de referência
+                byte[][] vizinhancaAnterior = getVizinhanca(previousFrame, y, x);
+                byte[][] vizinhancaProximo = getVizinhanca(nextFrame, y, x);
+
+                // Calcula a mediana (o valor "típico") de cada vizinhança
+                int medianaAnterior = getVizinhancaMediana(vizinhancaAnterior);
+                int medianaProximo = getVizinhancaMediana(vizinhancaProximo);
+
+                // Condição 1: A REGIÃO é estável no tempo?
+                // Verificamos se os valores típicos da vizinhança são parecidos.
+                // Usamos um limiar mais rígido (ex: 25) para a região.
+                if (Math.abs(medianaAnterior - medianaProximo) < 25) {
+
+                    // A média das medianas é o nosso valor "ideal" para a região.
+                    int mediaDasMedianas = (medianaAnterior + medianaProximo) / 2;
+
+                    // Condição 2: O PIXEL ATUAL é uma anomalia em relação à sua região estável?
+                    // Usamos o limiar original (ex: 40).
+                    if (Math.abs(mediaDasMedianas - v2) > 40) {
+                        // SIM, a região é estável e este pixel destoa muito. Corrija-o.
+                        processedFrame[y][x] = (byte) mediaDasMedianas;
+                    } else {
+                        // NÃO, o pixel está consistente com o valor estável da região. Mantenha-o.
+                        processedFrame[y][x] = (byte) v2;
+                    }
+
                 } else {
+                    // A região em si é instável (provavelmente há movimento),
+                    // então não fazemos a correção para evitar criar artefatos.
                     processedFrame[y][x] = (byte) v2;
                 }
             }
