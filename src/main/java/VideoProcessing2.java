@@ -81,7 +81,6 @@ public class VideoProcessing2 {
         frameCinza.release();
     }
 
-
     public static byte[][][] deepCopy(byte[][][] original) {
         if (original == null) return null;
         byte[][][] result = new byte[original.length][][];
@@ -129,7 +128,6 @@ public class VideoProcessing2 {
 
         return paddedTile;
     }
-
 
     public static void main(String[] args) {
         String caminhoVideo = "video-3s.mp4"; // Coloque seu vídeo de teste aqui
@@ -184,7 +182,11 @@ public class VideoProcessing2 {
 
                 for (Thread t : threads) t.start();
                 for (Thread t : threads) {
-                    try { t.join(); } catch (InterruptedException e) { e.printStackTrace(); }
+                    try {
+                        t.join();
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
                 }
                 processedPixels[f] = tempOutputFrame; // Atualiza o frame com o resultado do borrão
             }
@@ -206,7 +208,11 @@ public class VideoProcessing2 {
 
                 for (Thread t : threads) t.start();
                 for (Thread t : threads) {
-                    try { t.join(); } catch (InterruptedException e) { e.printStackTrace(); }
+                    try {
+                        t.join();
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
                 }
                 processedPixels[f] = tempOutputFrame; // Atualiza o frame com o resultado do filtro S&P
             }

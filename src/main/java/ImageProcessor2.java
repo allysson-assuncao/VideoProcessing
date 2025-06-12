@@ -68,7 +68,7 @@ class ImageProcessor2 extends Thread {
         return (count == 0) ? 0 : sum / count;
     }
 
-    /*private void applyTemporalBlurOnTile() {
+    private void applyTemporalBlurOnTile() {
         int paddedWidth = sourceTileWithPadding[0].length;
 
         byte[][] anterior = originalFrames[frameIndex - 1];
@@ -105,7 +105,7 @@ class ImageProcessor2 extends Thread {
                 outputFrame[fullFrameY][fullFrameX] = finalPixel;
             }
         }
-    }*/
+    }
 
     /*private void applyTemporalBlurOnTile() {
         int paddedWidth = sourceTileWithPadding[0].length;
@@ -140,7 +140,7 @@ class ImageProcessor2 extends Thread {
         }
     }*/
 
-    private double[] getNeighborhoodStats(byte[][] frame, int centerY, int centerX) {
+    /*private double[] getNeighborhoodStats(byte[][] frame, int centerY, int centerX) {
         int frameHeight = frame.length;
         int frameWidth = frame[0].length;
         ArrayList<Integer> values = new ArrayList<>();
@@ -172,10 +172,10 @@ class ImageProcessor2 extends Thread {
         return new double[]{mean, stdDev};
     }
 
-    /**
+    *//**
      * MÉTODO DE CORREÇÃO DE BLUR TOTALMENTE REFEITO
      * Usa limiares adaptativos e mesclagem suave (alpha blending) para um resultado superior.
-     */
+     *//*
     private void applyTemporalBlurOnTile() {
         int paddedWidth = sourceTileWithPadding[0].length;
 
@@ -231,7 +231,7 @@ class ImageProcessor2 extends Thread {
                 }
             }
         }
-    }
+    }*/
 
     private void applySaltAndPepperOnTile() {
         // As dimensões do tile COM padding
