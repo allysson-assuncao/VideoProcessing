@@ -9,23 +9,159 @@ import org.opencv.videoio.Videoio;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Classe principal que gerencia o carregamento, processamento paralelo e gravação do vídeo.
+ */
 public class VideoProcessing {
 
     static {
-        try {
-            nu.pattern.OpenCV.loadLocally();
-        } catch (Exception e) {
-            System.err.println("Erro ao carregar OpenCV: " + e.getMessage());
+        nu.pattern.OpenCV.loadLocally();
+    }
+
+    private final byte[][][] pixels;
+    private final int numThreads;
+
+    public VideoProcessing(String videoPath) {
+        this.pixels = carregarVideo(videoPath);
+        // Define o número de threads com base nos processadores disponíveis
+        this.numThreads = Runtime.getRuntime().availableProcessors();
+    }
+
+    public byte[][][] getPixels() {
+        return pixels;
+    }
+
+    public int getFramesCount() {
+        return pixels.length;
+    }
+
+    public int getWidth() {
+        return pixels[0][0].length;
+    }
+
+    public int getHeight() {
+        return pixels[0].length;
+    }
+
+
+    public void removerSalPimenta(int radius) {
+        int height = getHeight();
+        int width = getWidth();
+        int rowsPerThread = height / numThreads;
+
+        for (int f = 0; f < getFramesCount(); f++) {
+            byte[][] currentFrame = pixels[f];
+            byte[][] processedFrame = new byte[height][width];
+            byte[][] paddedFrame = addPadding(currentFrame, radius);
+            List<ImageProcessor> threads = new ArrayList<>();
+
+            for (int i = 0; i < numThreads; i++) {
+                int startY = i * rowsPerThread;
+                int endY = (i == numThreads - 1) ? height : startY + rowsPerThread;
+                ImageProcessor thread = new ImageProcessor(paddedFrame, processedFrame, startY, endY, radius);
+                threads.add(thread);
+                thread.start();
+            }
+
+            waitForThreads(threads);
+            pixels[f] = processedFrame;
         }
     }
 
-    public static byte[][][] carregarVideo(String caminho) {
-        VideoCapture captura = new VideoCapture(caminho);
-        if (!captura.isOpened()) {
-            System.err.println("Erro ao abrir o vídeo: " + caminho);
-            return new byte[0][][]; // Retorna vazio para indicar falha
+    /**
+     * VERSÃO CORRIGIDA:
+     * Mantém o loop de frames sequencial para respeitar a dependência de dados,
+     * mas paraleliza o processamento DENTRO de cada frame.
+     */
+    public void removerBorroesTempo() {
+        int height = getHeight();
+        int width = getWidth();
+        int rowsPerThread = height / numThreads;
+
+        // O loop sobre os frames (f) é mantido de forma SEQUENCIAL
+        for (int f = 1; f < getFramesCount() - 2; f++) {
+            // Lê diretamente do array 'pixels', que é atualizado a cada iteração
+            byte[][] previousFrame = pixels[f - 1];
+            byte[][] currentFrame = pixels[f];
+            byte[][] nextFrame = pixels[f + 2];
+            byte[][] processedFrame = new byte[height][width]; // Frame de resultado para esta iteração
+
+            List<ImageProcessor> threads = new ArrayList<>();
+            // A paralelização ocorre AQUI, para processar o 'processedFrame' mais rápido
+            for (int i = 0; i < numThreads; i++) {
+                int startY = i * rowsPerThread;
+                int endY = (i == numThreads - 1) ? height : startY + rowsPerThread;
+                ImageProcessor thread = new ImageProcessor(previousFrame, currentFrame, nextFrame, processedFrame, startY, endY);
+                threads.add(thread);
+                thread.start();
+            }
+
+            // Espera todas as threads terminarem de processar o frame atual
+            waitForThreads(threads);
+
+            // Atualiza o frame principal. Agora, na próxima iteração (f+1),
+            // a leitura de 'pixels[f]' pegará este resultado.
+            pixels[f] = processedFrame;
+        }
+    }
+
+    private byte[][] addPadding(byte[][] original, int radius) {
+        int height = original.length;
+        int width = original[0].length;
+        byte[][] padded = new byte[height + 2 * radius][width + 2 * radius];
+
+        // Copia a imagem original para o centro da matriz com margem
+        for (int y = 0; y < height; y++) {
+            System.arraycopy(original[y], 0, padded[y + radius], radius, width);
+        }
+        // Simplesmente deixamos a borda como 0 (preto), o que é suficiente para este caso.
+        // Estratégias mais complexas como espelhamento poderiam ser implementadas se necessário.
+        return padded;
+    }
+
+    private void waitForThreads(List<ImageProcessor> threads) {
+        for (Thread thread : threads) {
+            try {
+                thread.join();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+                Thread.currentThread().interrupt();
+            }
+        }
+    }
+
+    public void gravarVideo(String caminho, double fps) {
+        int qFrames = pixels.length;
+        int altura = pixels[0].length;
+        int largura = pixels[0][0].length;
+
+        int fourcc = VideoWriter.fourcc('a', 'v', 'c', '1');
+        VideoWriter escritor = new VideoWriter(caminho, fourcc, fps, new Size(largura, altura), true);
+
+        if (!escritor.isOpened()) {
+            System.err.println("Erro ao gravar vídeo no caminho corrigido");
+            return;
         }
 
+        Mat matrizRgb = new Mat(altura, largura, CvType.CV_8UC3);
+        byte[] linha = new byte[largura * 3];
+
+        for (int f = 0; f < qFrames; f++) {
+            for (int y = 0; y < altura; y++) {
+                for (int x = 0; x < largura; x++) {
+                    byte g = (byte) pixels[f][y][x];
+                    int i = x * 3;
+                    linha[i] = linha[i + 1] = linha[i + 2] = g;
+                }
+                matrizRgb.put(y, 0, linha);
+            }
+            escritor.write(matrizRgb);
+        }
+        escritor.release();
+    }
+
+    private byte[][][] carregarVideo(String caminho) {
+        VideoCapture captura = new VideoCapture(caminho);
         int largura = (int) captura.get(Videoio.CAP_PROP_FRAME_WIDTH);
         int altura = (int) captura.get(Videoio.CAP_PROP_FRAME_HEIGHT);
 
@@ -36,158 +172,53 @@ public class VideoProcessing {
 
         while (captura.read(matrizRGB)) {
             Imgproc.cvtColor(matrizRGB, escalaCinza, Imgproc.COLOR_BGR2GRAY);
-            byte[][] pixelsFrame = new byte[altura][largura];
+            byte[][] pixels = new byte[altura][largura];
             for (int y = 0; y < altura; y++) {
                 escalaCinza.get(y, 0, linha);
                 for (int x = 0; x < largura; x++) {
-                    pixelsFrame[y][x] = linha[x]; // O & 0xFF é mais para conversão int, aqui byte já é signed.
-                                                 // Se a leitura direta de OpenCV já garante o range correto, ok.
-                                                 // A lógica original com (byte)(linha[x] & 0xFF) é mais segura
-                                                 // para garantir que valores > 127 sejam tratados como unsigned
-                                                 // ao converter para int, mas ao armazenar como byte, o valor será o mesmo.
-                                                 // Vamos manter a consistência com o original, embora o efeito em byte seja o mesmo.
-                    pixelsFrame[y][x] = (byte)(linha[x] & 0xFF);
+                    pixels[y][x] = (byte) (linha[x] & 0xFF);
                 }
             }
-            frames.add(pixelsFrame);
+            frames.add(pixels);
         }
         captura.release();
 
-        if (frames.isEmpty()) {
-            System.err.println("Nenhum frame carregado do vídeo: " + caminho);
-            return new byte[0][][];
-        }
-
         byte[][][] cuboPixels = new byte[frames.size()][][];
-        for (int i = 0; i < frames.size(); i++) {
-            cuboPixels[i] = frames.get(i);
-        }
-        return cuboPixels;
-    }
-
-    public static void gravarVideo(byte[][][] pixels, String caminho, double fps) {
-        if (pixels == null || pixels.length == 0) {
-            System.err.println("Nenhum pixel para gravar.");
-            return;
-        }
-        int qFrames = pixels.length;
-        int altura = pixels[0].length;
-        int largura = pixels[0][0].length;
-
-        int fourcc = VideoWriter.fourcc('a', 'v', 'c', '1');
-
-        VideoWriter escritor = new VideoWriter(caminho, fourcc, fps, new Size(largura, altura), false); // false para grayscale
-
-        if (!escritor.isOpened()) {
-            System.err.println("Erro ao iniciar VideoWriter para: " + caminho + ". Verifique o codec e permissões.");
-            // Tentar um codec alternativo como fallback pode ser uma opção aqui
-            fourcc = VideoWriter.fourcc('M', 'J', 'P', 'G'); // Fallback para MJPEG em .avi
-            String fallbackPath = caminho.substring(0, caminho.lastIndexOf('.')) + "_fallback.avi";
-            System.out.println("Tentando fallback com MJPEG para: " + fallbackPath);
-            escritor = new VideoWriter(fallbackPath, fourcc, fps, new Size(largura, altura), false); // false para grayscale
-             if (!escritor.isOpened()) {
-                System.err.println("Erro ao iniciar VideoWriter com fallback para: " + fallbackPath);
-                return;
-            }
-        }
-
-
-        Mat frameCinza = new Mat(altura, largura, CvType.CV_8UC1);
-
-        for (int f = 0; f < qFrames; f++) {
-            // Colocar os bytes do frame processado diretamente na Mat
-            for(int y = 0; y < altura; y++){
-                frameCinza.put(y,0, pixels[f][y]);
-            }
-            escritor.write(frameCinza);
-        }
-        escritor.release();
-        frameCinza.release();
-    }
-
-
-    public static byte[][][] deepCopy(byte[][][] original) {
-        if (original == null) return null;
-        byte[][][] result = new byte[original.length][][];
-        for (int i = 0; i < original.length; i++) {
-            if (original[i] == null) continue;
-            result[i] = new byte[original[i].length][];
-            for (int j = 0; j < original[i].length; j++) {
-                if (original[i][j] == null) continue;
-                result[i][j] = new byte[original[i][j].length];
-                System.arraycopy(original[i][j], 0, result[i][j], 0, original[i][j].length);
-            }
-        }
-        return result;
+        return frames.toArray(cuboPixels);
     }
 
     public static void main(String[] args) {
-        String caminhoVideo = "video-3s.mp4"; // Coloque seu vídeo de teste aqui
-        String caminhoGravar = "video-3s3.mp4";
-        double fps = 24.0; // Ajuste conforme o FPS do seu vídeo original
+        String caminhoVideo = "video-3s.mp4";
+        String caminhoGravar = "video-3s-parallel.mp4";
+        double fps = 24.0;
 
         System.out.println("Carregando o vídeo... " + caminhoVideo);
-        long tempoInicioTotal = System.currentTimeMillis();
+        VideoProcessing videoProcessor = new VideoProcessing(caminhoVideo);
 
-        byte[][][] pixels = carregarVideo(caminhoVideo);
-        if (pixels.length == 0) {
-            System.out.println("Falha ao carregar o vídeo. Encerrando.");
-            return;
+        System.out.printf("Processamento paralelo iniciado. Frames: %d  Resolução: %d x %d Threads: %d \n",
+            videoProcessor.getFramesCount(), videoProcessor.getWidth(), videoProcessor.getHeight(), videoProcessor.numThreads);
+
+        // Pro 2: Remover borrões (executado uma vez)
+        System.out.println("Processamento: removendo borrão...");
+        long startTimeBlur = System.currentTimeMillis();
+        videoProcessor.removerBorroesTempo();
+        long endTimeBlur = System.currentTimeMillis();
+        System.out.printf("Remoção de borrão concluída em %d ms\n", (endTimeBlur - startTimeBlur));
+
+        // Pro 1: Remover sal e pimenta (executado várias vezes)
+        long totalTimeSaltPepper = 0;
+        for (int i = 0; i < 10; i++) {
+            System.out.println("Processamento: removendo sal e pimenta " + (i + 1));
+            long startTime = System.currentTimeMillis();
+            videoProcessor.removerSalPimenta(1); // Raio 1
+            long endTime = System.currentTimeMillis();
+            totalTimeSaltPepper += (endTime - startTime);
+            System.out.printf("Iteração %d concluída em %d ms\n", (i + 1), (endTime - startTime));
         }
-        byte[][][] originalPixels = deepCopy(pixels); // Cópia para leitura segura, especialmente para o borrão
+        System.out.printf("Remoção de sal e pimenta concluída. Tempo total: %d ms\n", totalTimeSaltPepper);
 
-        /*System.out.printf("Frames: %d   Resolução: %d x %d \n", pixels.length, pixels[0][0].length, pixels[0].length);*/
-
-        int numCores = Runtime.getRuntime().availableProcessors();
-        // Para testes, você pode querer limitar o número de threads
-        // int numThreads = Math.min(numCores, 4); // Exemplo: usar no máximo 4 threads
-        System.out.println("Utilizando " + numCores + " threads.");
-
-        List<ImageProcessor> threads = new ArrayList<>();
-        int totalFrames = pixels.length;
-        int framesPorThread = totalFrames / numCores;
-        int framesRestantes = totalFrames % numCores;
-        int frameAtualInicio = 0;
-
-        // Parâmetros dos filtros
-        int numPassesSalPimenta = 10;
-        int raioSalPimenta = 1;
-
-        long tempoInicioProcessamento = System.currentTimeMillis();
-
-        for (int i = 0; i < numCores; i++) {
-            int framesParaEstaThread = framesPorThread + (i < framesRestantes ? 1 : 0);
-            if (framesParaEstaThread == 0) continue; // Evitar criar threads sem frames para processar
-
-            int frameAtualFim = frameAtualInicio + framesParaEstaThread;
-            // System.out.printf("Thread %d: Frames %d a %d\n", i, frameAtualInicio, frameAtualFim - 1);
-
-            // 'originalPixels' é para leitura de referência (especialmente borrão temporal)
-            // 'pixels' é onde o resultado final será escrito e lido por etapas subsequentes (sal e pimenta)
-            threads.add(new ImageProcessor(frameAtualInicio, frameAtualFim, originalPixels, pixels, numPassesSalPimenta, raioSalPimenta));
-            frameAtualInicio = frameAtualFim;
-        }
-
-        for (ImageProcessor t : threads) {
-            t.start();
-        }
-
-        for (ImageProcessor t : threads) {
-            try {
-                t.join();
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-                Thread.currentThread().interrupt(); // Restaura o status de interrupção
-            }
-        }
-        long tempoFimProcessamento = System.currentTimeMillis();
-        System.out.println("Tempo de processamento dos filtros: " + (tempoFimProcessamento - tempoInicioProcessamento) + " ms");
-
-        System.out.println("Salvando o vídeo corrigido... " + caminhoGravar);
-        gravarVideo(pixels, caminhoGravar, fps); // 'pixels' agora contém o resultado final
-
-        long tempoFimTotal = System.currentTimeMillis();
-        System.out.println("Tempo total de execução: " + (tempoFimTotal - tempoInicioTotal) + " ms");
-        System.out.println("Processamento concluído!");
+        System.out.println("Salvando... " + caminhoGravar);
+        videoProcessor.gravarVideo(caminhoGravar, fps);
+        System.out.println("Término do processamento.");
     }
 }

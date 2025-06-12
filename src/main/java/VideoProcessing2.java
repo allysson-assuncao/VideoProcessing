@@ -81,6 +81,7 @@ public class VideoProcessing2 {
         frameCinza.release();
     }
 
+
     public static byte[][][] deepCopy(byte[][][] original) {
         if (original == null) return null;
         byte[][][] result = new byte[original.length][][];
@@ -97,37 +98,39 @@ public class VideoProcessing2 {
     }
 
     /**
-     * Cria uma submatriz (tira) com margens (padding) preenchidas.
+     * NOVO MÉTODO AUXILIAR
+     * Cria um único frame com margens (padding) ao redor.
      */
-    private static byte[][] createPaddedTile(byte[][] fullFrame, int startY, int height, int padding) {
-        int frameHeight = fullFrame.length;
-        int frameWidth = fullFrame[0].length;
-        int endY = startY + height;
+    private static byte[][] createPaddedFrame(byte[][] originalFrame, int padding) {
+        int height = originalFrame.length;
+        int width = originalFrame[0].length;
+        int paddedHeight = height + 2 * padding;
+        int paddedWidth = width + 2 * padding;
 
-        int paddedTileHeight = height + 2 * padding;
-        int paddedTileWidth = frameWidth + 2 * padding;
+        byte[][] paddedFrame = new byte[paddedHeight][paddedWidth];
 
-        byte[][] paddedTile = new byte[paddedTileHeight][paddedTileWidth];
-
-        // Copia a parte principal da tira
+        // 1. Copia o conteúdo original para o centro do novo frame
         for (int i = 0; i < height; i++) {
-            System.arraycopy(fullFrame[startY + i], 0, paddedTile[padding + i], padding, frameWidth);
+            System.arraycopy(originalFrame[i], 0, paddedFrame[i + padding], padding, width);
         }
 
-        // Preenche as margens superior e inferior
-        byte[] topPaddingRow = (startY > 0) ? fullFrame[startY - 1] : fullFrame[startY];
-        byte[] bottomPaddingRow = (endY < frameHeight) ? fullFrame[endY] : fullFrame[endY - 1];
-        System.arraycopy(topPaddingRow, 0, paddedTile[0], padding, frameWidth);
-        System.arraycopy(bottomPaddingRow, 0, paddedTile[paddedTileHeight - 1], padding, frameWidth);
-
-        // Preenche as margens esquerda e direita (e cantos)
-        for (int y = 0; y < paddedTileHeight; y++) {
-            paddedTile[y][0] = paddedTile[y][1]; // Replica o primeiro pixel de dados
-            paddedTile[y][paddedTileWidth - 1] = paddedTile[y][paddedTileWidth - 2]; // Replica o último
+        // 2. Preenche as margens superior e inferior replicando as bordas
+        for (int p = 0; p < padding; p++) {
+            System.arraycopy(paddedFrame[padding], 0, paddedFrame[p], 0, paddedWidth); // Topo
+            System.arraycopy(paddedFrame[paddedHeight - 1 - padding], 0, paddedFrame[paddedHeight - 1 - p], 0, paddedWidth); // Fundo
         }
 
-        return paddedTile;
+        // 3. Preenche as margens laterais replicando as bordas
+        for (int y = 0; y < paddedHeight; y++) {
+            for (int p = 0; p < padding; p++) {
+                paddedFrame[y][p] = paddedFrame[y][padding]; // Esquerda
+                paddedFrame[y][paddedWidth - 1 - p] = paddedFrame[y][paddedWidth - 1 - padding]; // Direita
+            }
+        }
+
+        return paddedFrame;
     }
+
 
     public static void main(String[] args) {
         String caminhoVideo = "video-3s.mp4"; // Coloque seu vídeo de teste aqui
@@ -142,82 +145,73 @@ public class VideoProcessing2 {
             System.out.println("Falha ao carregar o vídeo. Encerrando.");
             return;
         }
-        // 'processedPixels' é a matriz que será modificada a cada etapa
         byte[][][] processedPixels = deepCopy(originalPixels);
 
         int totalFrames = originalPixels.length;
         int height = originalPixels[0].length;
         int width = originalPixels[0][0].length;
-
         int numThreads = Runtime.getRuntime().availableProcessors();
+
         System.out.println("Utilizando " + numThreads + " threads.");
         System.out.printf("Frames: %d | Resolução: %d x %d \n", totalFrames, width, height);
 
-
-        // Parâmetros dos filtros
         int numPassesSalPimenta = 10;
         int raioSalPimenta = 1;
-        int padding = raioSalPimenta; // O padding necessário é igual ao raio do filtro
+        int padding = 2;
 
         long tempoInicioProcessamento = System.currentTimeMillis();
 
         // --- LOOP PRINCIPAL DE PROCESSAMENTO FRAME A FRAME ---
         for (int f = 0; f < totalFrames; f++) {
-            System.out.printf("Processando frame %d/%d...\n", f + 1, totalFrames);
+            System.out.printf("\rProcessando frame %d/%d...", f + 1, totalFrames);
 
             // ETAPA 1: REMOVER BORRÃO TEMPORAL
-            // Aplica-se apenas a frames que têm vizinhos f-1 e f+2
             if (f > 0 && f < totalFrames - 2) {
                 byte[][] tempOutputFrame = new byte[height][width];
+                // Cria os frames com margem UMA VEZ para a tarefa de borrão
+                byte[][] paddedAnterior = createPaddedFrame(originalPixels[f - 1], padding);
+                byte[][] paddedAtual = createPaddedFrame(originalPixels[f], padding);
+                byte[][] paddedProximo = createPaddedFrame(originalPixels[f + 2], padding);
+
                 List<Thread> threads = new ArrayList<>();
                 int rowsPerThread = height / numThreads;
                 int startY = 0;
-
                 for (int i = 0; i < numThreads; i++) {
-                    int rowsForThisThread = (i == numThreads - 1) ? (height - startY) : rowsPerThread;
-                    byte[][] tile = createPaddedTile(originalPixels[f], startY, rowsForThisThread, padding);
-                    threads.add(new ImageProcessor2(tile, startY, rowsForThisThread, f, originalPixels, tempOutputFrame, padding, raioSalPimenta, ImageProcessor2.Task.TEMPORAL_BLUR));
-                    startY += rowsForThisThread;
+                    int sliceHeight = (i == numThreads - 1) ? (height - startY) : rowsPerThread;
+                    threads.add(new ImageProcessor2(ImageProcessor2.Task.TEMPORAL_BLUR, null,
+                            paddedAnterior, paddedAtual, paddedProximo, tempOutputFrame,
+                            startY, sliceHeight, padding, raioSalPimenta));
+                    startY += sliceHeight;
                 }
-
                 for (Thread t : threads) t.start();
-                for (Thread t : threads) {
-                    try {
-                        t.join();
-                    } catch (InterruptedException e) {
-                        e.printStackTrace();
-                    }
-                }
-                processedPixels[f] = tempOutputFrame; // Atualiza o frame com o resultado do borrão
+                for (Thread t : threads) { try { t.join(); } catch (InterruptedException e) { e.printStackTrace(); } }
+                processedPixels[f] = tempOutputFrame;
             }
 
             // ETAPA 2: REMOVER RUÍDO SAL E PIMENTA (ITERATIVAMENTE)
             for (int pass = 0; pass < numPassesSalPimenta; pass++) {
-                byte[][] inputFrameForSP = processedPixels[f]; // Usa o resultado da etapa anterior
+                byte[][] inputFrameForSP = processedPixels[f];
                 byte[][] tempOutputFrame = new byte[height][width];
+                // Cria o frame com margem UMA VEZ para cada passada de S&P
+                byte[][] paddedInput = createPaddedFrame(inputFrameForSP, padding);
+
                 List<Thread> threads = new ArrayList<>();
                 int rowsPerThread = height / numThreads;
                 int startY = 0;
-
                 for (int i = 0; i < numThreads; i++) {
-                    int rowsForThisThread = (i == numThreads - 1) ? (height - startY) : rowsPerThread;
-                    byte[][] tile = createPaddedTile(inputFrameForSP, startY, rowsForThisThread, padding);
-                    threads.add(new ImageProcessor2(tile, startY, rowsForThisThread, f, null, tempOutputFrame, padding, raioSalPimenta, ImageProcessor2.Task.SALT_PEPPER));
-                    startY += rowsForThisThread;
+                    int sliceHeight = (i == numThreads - 1) ? (height - startY) : rowsPerThread;
+                    threads.add(new ImageProcessor2(ImageProcessor2.Task.SALT_PEPPER, paddedInput,
+                            null, null, null, tempOutputFrame,
+                            startY, sliceHeight, padding, raioSalPimenta));
+                    startY += sliceHeight;
                 }
-
                 for (Thread t : threads) t.start();
-                for (Thread t : threads) {
-                    try {
-                        t.join();
-                    } catch (InterruptedException e) {
-                        e.printStackTrace();
-                    }
-                }
-                processedPixels[f] = tempOutputFrame; // Atualiza o frame com o resultado do filtro S&P
+                for (Thread t : threads) { try { t.join(); } catch (InterruptedException e) { e.printStackTrace(); } }
+                processedPixels[f] = tempOutputFrame;
             }
         }
 
+        System.out.println("\nProcessamento dos filtros concluído.");
         long tempoFimProcessamento = System.currentTimeMillis();
         System.out.println("Tempo de processamento dos filtros: " + (tempoFimProcessamento - tempoInicioProcessamento) + " ms");
 
