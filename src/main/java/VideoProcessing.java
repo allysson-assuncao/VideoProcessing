@@ -207,7 +207,7 @@ public class VideoProcessing {
 
         // Pro 1: Remover sal e pimenta (executado várias vezes)
         long totalTimeSaltPepper = 0;
-        for (int i = 0; i < 10; i++) {
+        for (int i = 0; i < 3; i++) {
             System.out.println("Processamento: removendo sal e pimenta " + (i + 1));
             long startTime = System.currentTimeMillis();
             videoProcessor.removerSalPimenta(1); // Raio 1
