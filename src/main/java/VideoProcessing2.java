@@ -12,6 +12,7 @@ import java.util.List;
 
 /**
  * Classe principal que gerencia o carregamento, processamento paralelo e gravação do vídeo.
+ * Renomeada para VideoProcessing2.
  */
 public class VideoProcessing2 {
 
@@ -24,12 +25,7 @@ public class VideoProcessing2 {
 
     public VideoProcessing2(String videoPath) {
         this.pixels = carregarVideo(videoPath);
-        // Define o número de threads com base nos processadores disponíveis
         this.numThreads = Runtime.getRuntime().availableProcessors();
-    }
-
-    public byte[][][] getPixels() {
-        return pixels;
     }
 
     public int getFramesCount() {
@@ -37,13 +33,12 @@ public class VideoProcessing2 {
     }
 
     public int getWidth() {
-        return pixels[0][0].length;
+        return pixels.length > 0 ? pixels[0][0].length : 0;
     }
 
     public int getHeight() {
-        return pixels[0].length;
+        return pixels.length > 0 ? pixels[0].length : 0;
     }
-
 
     public void removerSalPimenta(int radius) {
         int height = getHeight();
@@ -69,40 +64,53 @@ public class VideoProcessing2 {
         }
     }
 
-    /**
-     * VERSÃO CORRIGIDA:
-     * Mantém o loop de frames sequencial para respeitar a dependência de dados,
-     * mas paraleliza o processamento DENTRO de cada frame.
-     */
-    public void removerBorroesTempo() {
+    public void removerBorroesComMovimento() {
         int height = getHeight();
         int width = getWidth();
         int rowsPerThread = height / numThreads;
 
-        // O loop sobre os frames (f) é mantido de forma SEQUENCIAL
         for (int f = 1; f < getFramesCount() - 2; f++) {
-            // Lê diretamente do array 'pixels', que é atualizado a cada iteração
-            byte[][] previousFrame = pixels[f - 1];
-            byte[][] currentFrame = pixels[f];
-            byte[][] nextFrame = pixels[f + 2];
-            byte[][] processedFrame = new byte[height][width]; // Frame de resultado para esta iteração
+            System.out.println("Processando frame " + f + " com compensação de movimento...");
 
+            byte[][] previousBytes = pixels[f - 1];
+            byte[][] currentBytes = pixels[f];
+            byte[][] nextBytes = pixels[f + 2];
+
+            Mat prevMat = new Mat(height, width, CvType.CV_8UC1);
+            Mat currMat = new Mat(height, width, CvType.CV_8UC1);
+            Mat nextMat = new Mat(height, width, CvType.CV_8UC1);
+
+            for (int i = 0; i < height; i++) {
+                prevMat.put(i, 0, previousBytes[i]);
+                currMat.put(i, 0, currentBytes[i]);
+                nextMat.put(i, 0, nextBytes[i]);
+            }
+
+            Mat flowBackward = new Mat();
+            Mat flowForward = new Mat();
+
+            Video.calcOpticalFlowFarneback(currMat, prevMat, flowBackward, 0.5, 3, 15, 3, 5, 1.2, 0);
+            Video.calcOpticalFlowFarneback(currMat, nextMat, flowForward, 0.5, 3, 15, 3, 5, 1.2, 0);
+
+            byte[][] processedFrame = new byte[height][width];
             List<ImageProcessor2> threads = new ArrayList<>();
-            // A paralelização ocorre AQUI, para processar o 'processedFrame' mais rápido
+
             for (int i = 0; i < numThreads; i++) {
                 int startY = i * rowsPerThread;
                 int endY = (i == numThreads - 1) ? height : startY + rowsPerThread;
-                ImageProcessor2 thread = new ImageProcessor2(previousFrame, currentFrame, nextFrame, processedFrame, startY, endY);
+                ImageProcessor2 thread = new ImageProcessor2(previousBytes, currentBytes, nextBytes, processedFrame, startY, endY, flowBackward, flowForward);
                 threads.add(thread);
                 thread.start();
             }
 
-            // Espera todas as threads terminarem de processar o frame atual
             waitForThreads(threads);
-
-            // Atualiza o frame principal. Agora, na próxima iteração (f+1),
-            // a leitura de 'pixels[f]' pegará este resultado.
             pixels[f] = processedFrame;
+
+            prevMat.release();
+            currMat.release();
+            nextMat.release();
+            flowBackward.release();
+            flowForward.release();
         }
     }
 
@@ -110,13 +118,9 @@ public class VideoProcessing2 {
         int height = original.length;
         int width = original[0].length;
         byte[][] padded = new byte[height + 2 * radius][width + 2 * radius];
-
-        // Copia a imagem original para o centro da matriz com margem
         for (int y = 0; y < height; y++) {
             System.arraycopy(original[y], 0, padded[y + radius], radius, width);
         }
-        // Simplesmente deixamos a borda como 0 (preto), o que é suficiente para este caso.
-        // Estratégias mais complexas como espelhamento poderiam ser implementadas se necessário.
         return padded;
     }
 
@@ -133,8 +137,8 @@ public class VideoProcessing2 {
 
     public void gravarVideo(String caminho, double fps) {
         int qFrames = pixels.length;
-        int altura = pixels[0].length;
-        int largura = pixels[0][0].length;
+        int altura = getHeight();
+        int largura = getWidth();
 
         int fourcc = VideoWriter.fourcc('a', 'v', 'c', '1');
         VideoWriter escritor = new VideoWriter(caminho, fourcc, fps, new Size(largura, altura), true);
@@ -173,14 +177,12 @@ public class VideoProcessing2 {
 
         while (captura.read(matrizRGB)) {
             Imgproc.cvtColor(matrizRGB, escalaCinza, Imgproc.COLOR_BGR2GRAY);
-            byte[][] pixels = new byte[altura][largura];
+            byte[][] pixelsFrame = new byte[altura][largura];
             for (int y = 0; y < altura; y++) {
                 escalaCinza.get(y, 0, linha);
-                for (int x = 0; x < largura; x++) {
-                    pixels[y][x] = (byte) (linha[x] & 0xFF);
-                }
+                System.arraycopy(linha, 0, pixelsFrame[y], 0, largura);
             }
-            frames.add(pixels);
+            frames.add(pixelsFrame);
         }
         captura.release();
 
@@ -188,67 +190,9 @@ public class VideoProcessing2 {
         return frames.toArray(cuboPixels);
     }
 
-    public void removerBorroesComMovimento() {
-        int height = getHeight();
-        int width = getWidth();
-        int rowsPerThread = height / numThreads;
-
-        // O loop sobre os frames (f) continua sequencial
-        for (int f = 1; f < getFramesCount() - 2; f++) {
-            System.out.println("Processando frame " + f + " com compensação de movimento...");
-
-            byte[][] previousBytes = pixels[f - 1];
-            byte[][] currentBytes = pixels[f];
-            byte[][] nextBytes = pixels[f + 2];
-
-            // Converte os frames de byte[] para Mat para usar no OpenCV
-            Mat prevMat = new Mat(height, width, CvType.CV_8UC1);
-            Mat currMat = new Mat(height, width, CvType.CV_8UC1);
-            Mat nextMat = new Mat(height, width, CvType.CV_8UC1);
-            prevMat.put(0, 0, previousBytes);
-            currMat.put(0, 0, currentBytes);
-            nextMat.put(0, 0, nextBytes);
-
-            // --- CÁLCULO DO FLUXO ÓPTICO ---
-            // Cria matrizes para armazenar os campos de vetores de fluxo
-            Mat flowBackward = new Mat(); // Fluxo de 'curr' para 'prev'
-            Mat flowForward = new Mat();  // Fluxo de 'curr' para 'next'
-
-            // Calcula o fluxo para trás
-            Video.calcOpticalFlowFarneback(currMat, prevMat, flowBackward, 0.5, 3, 15, 3, 5, 1.2, 0);
-
-            // Calcula o fluxo para frente
-            Video.calcOpticalFlowFarneback(currMat, nextMat, flowForward, 0.5, 3, 15, 3, 5, 1.2, 0);
-
-            // --- FIM DO CÁLCULO ---
-
-            byte[][] processedFrame = new byte[height][width];
-            List<ImageProcessor2> threads = new ArrayList<>();
-
-            // Passa os frames E os campos de fluxo para as threads
-            for (int i = 0; i < numThreads; i++) {
-                int startY = i * rowsPerThread;
-                int endY = (i == numThreads - 1) ? height : startY + rowsPerThread;
-                ImageProcessor2 thread = new ImageProcessor2(previousBytes, currentBytes, nextBytes, processedFrame, startY, endY, flowBackward, flowForward);
-                threads.add(thread);
-                thread.start();
-            }
-
-            waitForThreads(threads);
-            pixels[f] = processedFrame;
-
-            // Libera a memória das matrizes do OpenCV
-            prevMat.release();
-            currMat.release();
-            nextMat.release();
-            flowBackward.release();
-            flowForward.release();
-        }
-    }
-
     public static void main(String[] args) {
         String caminhoVideo = "video-3s.mp4";
-        String caminhoGravar = "video-3s-parallel.mp4";
+        String caminhoGravar = "video-3s-corrigido.mp4";
         double fps = 24.0;
 
         System.out.println("Carregando o vídeo... " + caminhoVideo);
@@ -257,27 +201,23 @@ public class VideoProcessing2 {
         System.out.printf("Processamento paralelo iniciado. Frames: %d  Resolução: %d x %d Threads: %d \n",
                 videoProcessor.getFramesCount(), videoProcessor.getWidth(), videoProcessor.getHeight(), videoProcessor.numThreads);
 
-        // Pro 2: Remover borrões (executado uma vez)
-        System.out.println("Processamento: removendo borrão com compensação de movimento...");
-        long startTimeBlur = System.currentTimeMillis();
-        videoProcessor.removerBorroesComMovimento(); // Chamando o novo método
-        long endTimeBlur = System.currentTimeMillis();
-        System.out.printf("Remoção de borrão concluída em %d ms\n", (endTimeBlur - startTimeBlur));
+        long startTime = System.currentTimeMillis();
 
-        // Pro 1: Remover sal e pimenta (executado várias vezes)
-        long totalTimeSaltPepper = 0;
-        for (int i = 0; i < 10; i++) {
-            System.out.println("Processamento: removendo sal e pimenta " + (i + 1));
-            long startTime = System.currentTimeMillis();
-            videoProcessor.removerSalPimenta(1); // Raio 1
-            long endTime = System.currentTimeMillis();
-            totalTimeSaltPepper += (endTime - startTime);
-            System.out.printf("Iteração %d concluída em %d ms\n", (i + 1), (endTime - startTime));
+        // Etapa 1: Remover borrões com COMPENSAÇÃO DE MOVIMENTO
+        videoProcessor.removerBorroesComMovimento();
+
+        // Etapa 2: Remover ruído "sal e pimenta"
+        System.out.println("Processamento: removendo sal e pimenta...");
+        for (int i = 0; i < 5; i++) { // Reduzi o número de iterações para um teste mais rápido
+            System.out.println("...iteração " + (i + 1));
+            videoProcessor.removerSalPimenta(1);
         }
-        System.out.printf("Remoção de sal e pimenta concluída. Tempo total: %d ms\n", totalTimeSaltPepper);
+
+        long endTime = System.currentTimeMillis();
+        System.out.printf("Processamento de filtros concluído em %d ms\n", (endTime - startTime));
 
         System.out.println("Salvando... " + caminhoGravar);
         videoProcessor.gravarVideo(caminhoGravar, fps);
-        System.out.println("Término do processamento.");
+        System.out.println("Término do processamento. Vídeo salvo em: " + caminhoGravar);
     }
 }
