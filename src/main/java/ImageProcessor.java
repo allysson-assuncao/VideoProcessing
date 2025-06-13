@@ -141,14 +141,14 @@ public class ImageProcessor extends Thread {
                 // Condição 1: A REGIÃO é estável no tempo?
                 // Verificamos se os valores típicos da vizinhança são parecidos.
                 // Usamos um limiar mais rígido (ex: 25) para a região.
-                if (Math.abs(medianaAnterior - medianaProximo) < 25) {
+                if (Math.abs(medianaAnterior - medianaProximo) < 22) {
 
                     // A média das medianas é o nosso valor "ideal" para a região.
                     int mediaDasMedianas = (medianaAnterior + medianaProximo) / 2;
 
                     // Condição 2: O PIXEL ATUAL é uma anomalia em relação à sua região estável?
                     // Usamos o limiar original (ex: 40).
-                    if (Math.abs(mediaDasMedianas - v2) > 40) {
+                    if (Math.abs(mediaDasMedianas - v2) > 13) {
                         // SIM, a região é estável e este pixel destoa muito. Corrija-o.
                         processedFrame[y][x] = (byte) mediaDasMedianas;
                     } else {
