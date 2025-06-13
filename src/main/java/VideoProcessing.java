@@ -9,9 +9,6 @@ import org.opencv.videoio.Videoio;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * Classe principal que gerencia o carregamento, processamento paralelo e gravação do vídeo.
- */
 public class VideoProcessing {
 
     static {
@@ -23,7 +20,6 @@ public class VideoProcessing {
 
     public VideoProcessing(String videoPath) {
         this.pixels = carregarVideo(videoPath);
-        // Define o número de threads com base nos processadores disponíveis
         this.numThreads = Runtime.getRuntime().availableProcessors();
     }
 
@@ -68,26 +64,18 @@ public class VideoProcessing {
         }
     }
 
-    /**
-     * VERSÃO CORRIGIDA:
-     * Mantém o loop de frames sequencial para respeitar a dependência de dados,
-     * mas paraleliza o processamento DENTRO de cada frame.
-     */
     public void removerBorroesTempo() {
         int height = getHeight();
         int width = getWidth();
         int rowsPerThread = height / numThreads;
 
-        // O loop sobre os frames (f) é mantido de forma SEQUENCIAL
         for (int f = 1; f < getFramesCount() - 2; f++) {
-            // Lê diretamente do array 'pixels', que é atualizado a cada iteração
             byte[][] previousFrame = pixels[f - 1];
             byte[][] currentFrame = pixels[f];
             byte[][] nextFrame = pixels[f + 2];
-            byte[][] processedFrame = new byte[height][width]; // Frame de resultado para esta iteração
+            byte[][] processedFrame = new byte[height][width];
 
             List<ImageProcessor> threads = new ArrayList<>();
-            // A paralelização ocorre AQUI, para processar o 'processedFrame' mais rápido
             for (int i = 0; i < numThreads; i++) {
                 int startY = i * rowsPerThread;
                 int endY = (i == numThreads - 1) ? height : startY + rowsPerThread;
@@ -96,11 +84,8 @@ public class VideoProcessing {
                 thread.start();
             }
 
-            // Espera todas as threads terminarem de processar o frame atual
             waitForThreads(threads);
 
-            // Atualiza o frame principal. Agora, na próxima iteração (f+1),
-            // a leitura de 'pixels[f]' pegará este resultado.
             pixels[f] = processedFrame;
         }
     }
@@ -110,12 +95,9 @@ public class VideoProcessing {
         int width = original[0].length;
         byte[][] padded = new byte[height + 2 * radius][width + 2 * radius];
 
-        // Copia a imagem original para o centro da matriz com margem
         for (int y = 0; y < height; y++) {
             System.arraycopy(original[y], 0, padded[y + radius], radius, width);
         }
-        // Simplesmente deixamos a borda como 0 (preto), o que é suficiente para este caso.
-        // Estratégias mais complexas como espelhamento poderiam ser implementadas se necessário.
         return padded;
     }
 
@@ -189,7 +171,7 @@ public class VideoProcessing {
 
     public static void main(String[] args) {
         String caminhoVideo = "video-3s.mp4";
-        String caminhoGravar = "video-3s-parallel.mp4";
+        String caminhoGravar = "video-3s-corrigido.mp4";
         double fps = 24.0;
 
         System.out.println("Carregando o vídeo... " + caminhoVideo);
@@ -198,24 +180,24 @@ public class VideoProcessing {
         System.out.printf("Processamento paralelo iniciado. Frames: %d  Resolução: %d x %d Threads: %d \n",
             videoProcessor.getFramesCount(), videoProcessor.getWidth(), videoProcessor.getHeight(), videoProcessor.numThreads);
 
-        // Pro 2: Remover borrões (executado uma vez)
+        long startTime = System.currentTimeMillis();
+
+        // Remover borrões
         System.out.println("Processamento: removendo borrão...");
         long startTimeBlur = System.currentTimeMillis();
         videoProcessor.removerBorroesTempo();
         long endTimeBlur = System.currentTimeMillis();
         System.out.printf("Remoção de borrão concluída em %d ms\n", (endTimeBlur - startTimeBlur));
 
-        // Pro 1: Remover sal e pimenta (executado várias vezes)
-        long totalTimeSaltPepper = 0;
+        // Remover sal e pimenta (executado várias vezes)
+        long totalTime = 0;
         for (int i = 0; i < 3; i++) {
             System.out.println("Processamento: removendo sal e pimenta " + (i + 1));
-            long startTime = System.currentTimeMillis();
             videoProcessor.removerSalPimenta(1); // Raio 1
-            long endTime = System.currentTimeMillis();
-            totalTimeSaltPepper += (endTime - startTime);
-            System.out.printf("Iteração %d concluída em %d ms\n", (i + 1), (endTime - startTime));
         }
-        System.out.printf("Remoção de sal e pimenta concluída. Tempo total: %d ms\n", totalTimeSaltPepper);
+        long endTime = System.currentTimeMillis();
+        totalTime += (endTime - startTime);
+        System.out.printf("Corrção do vídeo concluída. Tempo total: %d ms\n", totalTime);
 
         System.out.println("Salvando... " + caminhoGravar);
         videoProcessor.gravarVideo(caminhoGravar, fps);
