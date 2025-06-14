@@ -2,14 +2,9 @@ import java.util.Arrays;
 
 public class ImageProcessor extends Thread {
 
-    private enum ModoFiltro {
-        SAL_E_PIMENTA,
-        BORRAO_TEMPORAL
-    }
-
-    private final ModoFiltro modo;
-    private final byte[][] quadroFonte; // Para Sal-Pimenta, é o quadro com borda. Para Borrão, é o quadro atual.
-    private final byte[][] quadroDestino;
+    private final String modo;
+    private final byte[][] quadroOriginal;
+    private final byte[][] quadroProcessado;
     private final int linhaInicial;
     private final int linhaFinal;
 
@@ -17,11 +12,11 @@ public class ImageProcessor extends Thread {
     private final byte[][] quadroAnterior;
     private final byte[][] quadroProximo;
 
-    // Construtor para Sal e Pimenta
-    public ImageProcessor(byte[][] quadroComBorda, byte[][] quadroDestino, int linhaInicial, int linhaFinal, int raio) {
-        this.modo = ModoFiltro.SAL_E_PIMENTA;
-        this.quadroFonte = quadroComBorda;
-        this.quadroDestino = quadroDestino;
+    // Construtor para o filtro de Sal e Pimenta (Mediana)
+    public ImageProcessor(byte[][] quadroComBorda, byte[][] quadroProcessado, int linhaInicial, int linhaFinal, int raio) {
+        this.modo = "salEPimenta";
+        this.quadroOriginal = quadroComBorda;
+        this.quadroProcessado = quadroProcessado;
         this.linhaInicial = linhaInicial;
         this.linhaFinal = linhaFinal;
         this.raio = raio;
@@ -29,70 +24,89 @@ public class ImageProcessor extends Thread {
         this.quadroProximo = null;
     }
 
-    // Construtor para Borrão Temporal
-    public ImageProcessor(byte[][] quadroAnterior, byte[][] quadroAtual, byte[][] quadroProximo, byte[][] quadroDestino, int linhaInicial, int linhaFinal) {
-        this.modo = ModoFiltro.BORRAO_TEMPORAL;
-        this.quadroFonte = quadroAtual; // A fonte de leitura para o pixel atual é o próprio quadro atual.
-        this.quadroDestino = quadroDestino;
+    // Construtor para o filtro de Borrão Temporal
+    public ImageProcessor(byte[][] quadroAnterior, byte[][] quadroAtual, byte[][] quadroProximo, byte[][] quadroProcessado, int linhaInicial, int linhaFinal) {
+        this.modo = "borraoTemporal";
+        this.quadroOriginal = quadroAtual;
+        this.quadroProcessado = quadroProcessado;
         this.linhaInicial = linhaInicial;
         this.linhaFinal = linhaFinal;
         this.quadroAnterior = quadroAnterior;
         this.quadroProximo = quadroProximo;
-        this.raio = 0;
+        this.raio = 0; // Não utilizado neste modo
     }
 
     @Override
     public void run() {
-        if (modo == ModoFiltro.SAL_E_PIMENTA) {
+        if ("salEPimenta".equals(modo)) {
             aplicarFiltroMediana();
-        } else if (modo == ModoFiltro.BORRAO_TEMPORAL) {
+        } else if ("borraoTemporal".equals(modo)) {
             aplicarFiltroBorraoTemporal();
         }
     }
 
+    /**
+     * Aplica o filtro da mediana. Eficaz contra ruído "sal e pimenta".
+     * A mediana é mais robusta a outliers (pixels muito claros ou escuros) do que a média.
+     */
     private void aplicarFiltroMediana() {
-        int largura = quadroDestino[0].length;
+        int largura = quadroProcessado[0].length;
         int tamanhoVizinhanca = (2 * raio + 1) * (2 * raio + 1);
         int[] vizinhos = new int[tamanhoVizinhanca];
 
         for (int y = linhaInicial; y < linhaFinal; y++) {
             for (int x = 0; x < largura; x++) {
                 int k = 0;
+                // Coleta os valores dos pixels na vizinhança.
                 for (int dy = -raio; dy <= raio; dy++) {
                     for (int dx = -raio; dx <= raio; dx++) {
-                        vizinhos[k++] = quadroFonte[y + raio + dy][x + raio + dx] & 0xFF;
+                        // O quadroOriginal aqui é o quadro com borda, por isso o offset (y + raio).
+                        vizinhos[k++] = quadroOriginal[y + raio + dy][x + raio + dx] & 0xFF;
                     }
                 }
+                // Ordena os valores para encontrar a mediana.
                 Arrays.sort(vizinhos);
-                quadroDestino[y][x] = (byte) vizinhos[tamanhoVizinhanca / 2];
+                quadroProcessado[y][x] = (byte) vizinhos[tamanhoVizinhanca / 2];
             }
         }
     }
 
+    /**
+     * Aplica um filtro "inteligente" que corrige um pixel se ele for muito diferente
+     * da média das medianas das suas vizinhanças nos frames anterior e próximo.
+     */
     private void aplicarFiltroBorraoTemporal() {
-        int largura = quadroDestino[0].length;
+        int largura = quadroProcessado[0].length;
 
         for (int y = linhaInicial; y < linhaFinal; y++) {
             for (int x = 0; x < largura; x++) {
-                int pixelAtual = quadroFonte[y][x] & 0xFF;
+                int pixelAtual = quadroOriginal[y][x] & 0xFF;
 
                 int medianaAnterior = calcularMedianaDaVizinhanca3x3(quadroAnterior, y, x);
                 int medianaProximo = calcularMedianaDaVizinhanca3x3(quadroProximo, y, x);
 
+                // Se as medianas dos frames vizinhos são parecidas, é provável que a região seja estável.
                 if (Math.abs(medianaAnterior - medianaProximo) < 22) {
                     int mediaDasMedianas = (medianaAnterior + medianaProximo) / 2;
+
+                    // Se o pixel atual difere muito da média das medianas, ele pode ser um erro temporal.
                     if (Math.abs(mediaDasMedianas - pixelAtual) > 15) {
-                        quadroDestino[y][x] = (byte) mediaDasMedianas;
+                        quadroProcessado[y][x] = (byte) mediaDasMedianas; // Corrige o pixel.
                     } else {
-                        quadroDestino[y][x] = (byte) pixelAtual;
+                        quadroProcessado[y][x] = (byte) pixelAtual; // Mantém o pixel original.
                     }
                 } else {
-                    quadroDestino[y][x] = (byte) pixelAtual;
+                    quadroProcessado[y][x] = (byte) pixelAtual; // Mantém se a região está em movimento.
                 }
             }
         }
     }
 
+    /**
+     * Calcula o valor mediano de uma vizinhança 3x3 de um pixel em um determinado quadro.
+     * Este método é mais eficiente pois não cria um novo array 2D a cada chamada.
+     * @return O valor mediano (0-255).
+     */
     private int calcularMedianaDaVizinhanca3x3(byte[][] quadro, int cy, int cx) {
         int[] vizinhos = new int[9];
         int k = 0;
@@ -104,6 +118,7 @@ public class ImageProcessor extends Thread {
                 int ny = cy + dy;
                 int nx = cx + dx;
 
+                // Trata os pixels na borda do quadro para não estourar os limites do array.
                 if (ny < 0) ny = 0;
                 if (ny >= altura) ny = altura - 1;
                 if (nx < 0) nx = 0;
@@ -113,6 +128,6 @@ public class ImageProcessor extends Thread {
             }
         }
         Arrays.sort(vizinhos);
-        return vizinhos[4];
+        return vizinhos[4]; // A mediana em um array de 9 elementos é o 5º (índice 4).
     }
 }
