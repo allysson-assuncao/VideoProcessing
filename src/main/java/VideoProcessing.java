@@ -71,11 +71,10 @@ public class VideoProcessing {
 
     /**
      * Remove borrões temporais comparando um quadro com seus vizinhos (anterior e próximo).
-     * Ajuda a corrigir pixels que estão deslocados no tempo.
+     * Ajuda a corrigir borrões que estão deslocados no tempo.
      */
     public void removerBorroesTemporais() {
         int altura = getAltura();
-        int largura = getLargura();
         int linhasPorThread = altura / numeroDeThreads;
 
         byte[][][] framesProcessados = new byte[getTotalDeFrames()][][];
@@ -105,7 +104,7 @@ public class VideoProcessing {
     }
 
     /**
-     * Cria um novo quadro com bordas adicionais (padding) para evitar problemas no processamento das bordas.
+     * Cria um novo quadro com bordas adicionais (padding) para evitar verificações de borda (index out of bounds).
      */
     private byte[][] adicionarBorda(byte[][] quadroOriginal, int raio) {
         int altura = quadroOriginal.length;
@@ -234,7 +233,7 @@ public class VideoProcessing {
         // Aplicar o filtro de sal e pimenta algumas vezes pode melhorar o resultado.
         System.out.println("Processando: removendo ruído de sal e pimenta...");
         for (int i = 0; i < 3; i++) {
-            System.out.printf(" - Passada %d de 3\n", i + 1);
+            System.out.printf(" - Processamento %d de 3\n", i + 1);
             // Raio 1 é eficaz para ruído fino.
             processador.removerSalPimenta(1);
         }

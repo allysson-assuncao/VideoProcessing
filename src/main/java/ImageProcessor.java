@@ -20,8 +20,8 @@ public class ImageProcessor extends Thread {
         this.linhaInicial = linhaInicial;
         this.linhaFinal = linhaFinal;
         this.raio = raio;
-        this.quadroAnterior = null;
-        this.quadroProximo = null;
+        this.quadroAnterior = null; // Não utilizado neste modo
+        this.quadroProximo = null; // Não utilizado neste modo
     }
 
     // Construtor para o filtro de Borrão Temporal
@@ -72,7 +72,7 @@ public class ImageProcessor extends Thread {
     }
 
     /**
-     * Aplica um filtro "inteligente" que corrige um pixel se ele for muito diferente
+     * Aplica um filtro "inteligente" que corrige um pixel se sua região for muito diferente
      * da média das medianas das suas vizinhanças nos frames anterior e próximo.
      */
     private void aplicarFiltroBorraoTemporal() {
