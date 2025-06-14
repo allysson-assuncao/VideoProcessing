@@ -11,7 +11,6 @@ import java.util.List;
 
 public class VideoProcessing {
 
-    // Carrega a biblioteca OpenCV nativa ao iniciar a classe.
     static {
         nu.pattern.OpenCV.loadLocally();
     }
@@ -24,7 +23,6 @@ public class VideoProcessing {
         this.numeroDeThreads = Runtime.getRuntime().availableProcessors();
     }
 
-    // Métodos getters para as propriedades do vídeo.
     public int getTotalDeQuadros() {
         return quadrosEmBytes.length;
     }
@@ -37,69 +35,64 @@ public class VideoProcessing {
         return quadrosEmBytes[0].length;
     }
 
-    /**
-     * Aplica um filtro de mediana para remover ruído "sal e pimenta" de todos os quadros.
-     * O processamento é dividido entre várias threads para acelerar a execução.
-     * @param raio O raio da vizinhança a ser considerada para o cálculo da mediana.
-     */
     public void removerSalPimenta(int raio) {
         int altura = getAltura();
         int largura = getLargura();
         int linhasPorThread = altura / numeroDeThreads;
 
+        byte[][][] quadrosProcessados = new byte[getTotalDeQuadros()][altura][largura];
+
         for (int i = 0; i < getTotalDeQuadros(); i++) {
             byte[][] quadroAtual = quadrosEmBytes[i];
-            byte[][] quadroProcessado = new byte[altura][largura];
-            // Adiciona uma borda ao quadro para que o filtro possa processar os pixels da borda original.
+            byte[][] quadroDestino = quadrosProcessados[i];
             byte[][] quadroComBorda = adicionarBorda(quadroAtual, raio);
             List<ImageProcessor> threads = new ArrayList<>();
 
             for (int t = 0; t < numeroDeThreads; t++) {
                 int linhaInicial = t * linhasPorThread;
                 int linhaFinal = (t == numeroDeThreads - 1) ? altura : linhaInicial + linhasPorThread;
-                ImageProcessor thread = new ImageProcessor(quadroComBorda, quadroProcessado, linhaInicial, linhaFinal, raio);
+                ImageProcessor thread = new ImageProcessor(quadroComBorda, quadroDestino, linhaInicial, linhaFinal, raio);
                 threads.add(thread);
                 thread.start();
             }
 
             aguardarThreads(threads);
-            quadrosEmBytes[i] = quadroProcessado;
         }
+        this.quadrosEmBytes = quadrosProcessados;
     }
 
-    /**
-     * Remove borrões temporais comparando um quadro com seus vizinhos (anterior e próximo).
-     * Ajuda a corrigir pixels que estão deslocados no tempo.
-     */
     public void removerBorroesTemporais() {
         int altura = getAltura();
         int largura = getLargura();
         int linhasPorThread = altura / numeroDeThreads;
+
+        // Cria uma cópia para o resultado, garantindo que os quadros não processados (bordas) sejam mantidos.
+        byte[][][] quadrosProcessados = new byte[getTotalDeQuadros()][][];
+        for(int i = 0; i < getTotalDeQuadros(); i++){
+            quadrosProcessados[i] = quadrosEmBytes[i].clone();
+        }
 
         // O loop ignora o primeiro e os dois últimos quadros, pois eles não possuem vizinhos completos.
         for (int i = 1; i < getTotalDeQuadros() - 2; i++) {
             byte[][] quadroAnterior = quadrosEmBytes[i - 1];
             byte[][] quadroAtual = quadrosEmBytes[i];
             byte[][] quadroProximo = quadrosEmBytes[i + 2];
-            byte[][] quadroProcessado = new byte[altura][largura];
+            byte[][] quadroDestino = quadrosProcessados[i];
 
             List<ImageProcessor> threads = new ArrayList<>();
             for (int t = 0; t < numeroDeThreads; t++) {
                 int linhaInicial = t * linhasPorThread;
                 int linhaFinal = (t == numeroDeThreads - 1) ? altura : linhaInicial + linhasPorThread;
-                ImageProcessor thread = new ImageProcessor(quadroAnterior, quadroAtual, quadroProximo, quadroProcessado, linhaInicial, linhaFinal);
+                ImageProcessor thread = new ImageProcessor(quadroAnterior, quadroAtual, quadroProximo, quadroDestino, linhaInicial, linhaFinal);
                 threads.add(thread);
                 thread.start();
             }
 
             aguardarThreads(threads);
-            quadrosEmBytes[i] = quadroProcessado;
         }
+        this.quadrosEmBytes = quadrosProcessados;
     }
 
-    /**
-     * Cria um novo quadro com bordas adicionais (padding) para evitar problemas no processamento das bordas.
-     */
     private byte[][] adicionarBorda(byte[][] quadroOriginal, int raio) {
         int altura = quadroOriginal.length;
         int largura = quadroOriginal[0].length;
@@ -111,9 +104,6 @@ public class VideoProcessing {
         return quadroComBorda;
     }
 
-    /**
-     * Aguarda a finalização de todas as threads de processamento.
-     */
     private void aguardarThreads(List<ImageProcessor> threads) {
         for (Thread thread : threads) {
             try {
@@ -125,16 +115,10 @@ public class VideoProcessing {
         }
     }
 
-    /**
-     * Grava os quadros processados em um novo arquivo de vídeo.
-     * @param caminhoSaida O caminho do arquivo de vídeo a ser salvo.
-     * @param fps A taxa de quadros por segundo do vídeo de saída.
-     */
     public void gravarVideo(String caminhoSaida, double fps) {
         int altura = getAltura();
         int largura = getLargura();
 
-        // Define o codec do vídeo. 'avc1' corresponde ao H.264.
         int fourcc = VideoWriter.fourcc('a', 'v', 'c', '1');
         VideoWriter escritor = new VideoWriter(caminhoSaida, fourcc, fps, new Size(largura, altura), true);
 
@@ -143,29 +127,28 @@ public class VideoProcessing {
             return;
         }
 
-        // Como o vídeo de entrada é em escala de cinza, precisamos converter cada pixel cinza (1 canal)
-        // para um pixel BGR (3 canais) repetindo o valor de cinza para B, G e R.
         Mat quadroMat = new Mat(altura, largura, CvType.CV_8UC3);
-        byte[] bufferDeLinha = new byte[largura * 3]; // 3 canais (BGR)
+        byte[] bufferDeLinha = new byte[largura * 3];
 
         for (byte[][] quadro : quadrosEmBytes) {
             for (int y = 0; y < altura; y++) {
                 for (int x = 0; x < largura; x++) {
                     byte valorCinza = quadro[y][x];
                     int indice = x * 3;
-                    bufferDeLinha[indice] = valorCinza;     // Canal Azul
-                    bufferDeLinha[indice + 1] = valorCinza; // Canal Verde
-                    bufferDeLinha[indice + 2] = valorCinza; // Canal Vermelho
+                    bufferDeLinha[indice] = valorCinza;
+                    bufferDeLinha[indice + 1] = valorCinza;
+                    bufferDeLinha[indice + 2] = valorCinza;
                 }
                 quadroMat.put(y, 0, bufferDeLinha);
             }
             escritor.write(quadroMat);
         }
         escritor.release();
+        quadroMat.release();
     }
 
     /**
-     * Carrega um vídeo a partir de um caminho, converte para escala de cinza e armazena os pixels.
+     * CORRIGIDO: Carrega um vídeo, convertendo para escala de cinza de forma segura, linha por linha.
      */
     private byte[][][] carregarVideo(String caminhoEntrada) {
         VideoCapture captura = new VideoCapture(caminhoEntrada);
@@ -181,16 +164,21 @@ public class VideoProcessing {
         Mat quadroColorido = new Mat();
         Mat quadroCinza = new Mat();
 
-        // Lê cada quadro do vídeo.
+        byte[] bufferDeLinha = new byte[largura];
+
         while (captura.read(quadroColorido)) {
-            // Converte o quadro de BGR (padrão do OpenCV) para escala de cinza.
             Imgproc.cvtColor(quadroColorido, quadroCinza, Imgproc.COLOR_BGR2GRAY);
             byte[][] pixelsDoQuadro = new byte[altura][largura];
-            /*quadroCinza.get(0, 0, pixelsDoQuadro);*/
-            quadroCinza.get(0, 0);
+            // **A CORREÇÃO ESTÁ AQUI:** Lendo a matriz linha por linha para garantir que os dados sejam copiados.
+            for (int y = 0; y < altura; y++) {
+                quadroCinza.get(y, 0, bufferDeLinha);
+                System.arraycopy(bufferDeLinha, 0, pixelsDoQuadro[y], 0, largura);
+            }
             listaDeQuadros.add(pixelsDoQuadro);
         }
         captura.release();
+        quadroColorido.release();
+        quadroCinza.release();
 
         return listaDeQuadros.toArray(new byte[0][][]);
     }
@@ -203,6 +191,11 @@ public class VideoProcessing {
         System.out.println("Carregando o vídeo: " + caminhoVideo);
         VideoProcessing processador = new VideoProcessing(caminhoVideo);
 
+        if (processador.getTotalDeQuadros() == 0) {
+            System.err.println("Nenhum quadro foi carregado. Abortando.");
+            return;
+        }
+
         System.out.printf("Processamento paralelo iniciado. Quadros: %d | Resolução: %d x %d | Threads: %d \n",
             processador.getTotalDeQuadros(), processador.getLargura(), processador.getAltura(), processador.numeroDeThreads);
 
@@ -211,11 +204,10 @@ public class VideoProcessing {
         System.out.println("Processando: removendo borrão temporal...");
         processador.removerBorroesTemporais();
 
-        // Aplicar o filtro de sal e pimenta algumas vezes pode melhorar o resultado.
         System.out.println("Processando: removendo ruído de sal e pimenta...");
         for (int i = 0; i < 3; i++) {
             System.out.printf(" - Passada %d de 3\n", i + 1);
-            processador.removerSalPimenta(1); // Raio 1 é eficaz para ruído fino.
+            processador.removerSalPimenta(1);
         }
 
         long tempoFinalTotal = System.currentTimeMillis();
