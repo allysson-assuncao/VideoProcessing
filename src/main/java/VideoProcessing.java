@@ -97,7 +97,6 @@ public class VideoProcessing {
                 threads.add(thread);
                 thread.start();
             }
-
             aguardarThreads(threads);
         }
         this.framesEmBytes = framesProcessados;
@@ -135,6 +134,7 @@ public class VideoProcessing {
      * Grava os frames processados em um novo arquivo de vídeo.
      * @param caminhoSaida O caminho do arquivo de vídeo a ser salvo.
      * @param fps A taxa de frames por segundo do vídeo de saída.
+     * Também não sofreu grandes mudanças em relação ao original.
      */
     public void gravarVideo(String caminhoSaida, double fps) {
         int altura = getAltura();
@@ -173,6 +173,7 @@ public class VideoProcessing {
 
     /**
      * Carrega um vídeo a partir de um caminho, converte para escala de cinza e armazena os pixels.
+     * A função original foi majoritatiamente mantida
      */
     private byte[][][] carregarVideo(String caminhoEntrada) {
         VideoCapture captura = new VideoCapture(caminhoEntrada);
@@ -230,11 +231,11 @@ public class VideoProcessing {
         System.out.println("Processando: removendo borrão temporal...");
         processador.removerBorroesTemporais();
 
-        // Aplicar o filtro de sal e pimenta algumas vezes pode melhorar o resultado.
+        // Aplicar o filtro de sal e pimenta, suaviza as inconsistências menores.
         System.out.println("Processando: removendo ruído de sal e pimenta...");
         for (int i = 0; i < 3; i++) {
             System.out.printf(" - Processamento %d de 3\n", i + 1);
-            // Raio 1 é eficaz para ruído fino.
+            // Raio 1 é eficaz para ruído fino, sem borrar tanto.
             processador.removerSalPimenta(1);
         }
 

@@ -66,7 +66,7 @@ public class ImageProcessor extends Thread {
                 }
                 // Ordena os valores para encontrar a mediana.
                 Arrays.sort(vizinhos);
-                quadroProcessado[y][x] = (byte) vizinhos[tamanhoVizinhanca / 2];
+                quadroProcessado[y][x] = (byte) vizinhos[tamanhoVizinhanca / 2]; // Considera o quinto elemento, posição 4
             }
         }
     }
@@ -128,6 +128,6 @@ public class ImageProcessor extends Thread {
             }
         }
         Arrays.sort(vizinhos);
-        return vizinhos[4]; // A mediana em um array de 9 elementos é o 5º (índice 4).
+        return vizinhos[4];
     }
 }
